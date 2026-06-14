@@ -51,16 +51,16 @@ rules:
     message: "⚪ {key} thiếu ngày ({missing_dates}) — vui lòng điền đủ."
 
   # ── LEVEL 1: VIOLENT ──────────────────────────────────────────────────────
-  - id: L1_START_TODAY_WRONG_STATUS
-    name: "Đến ngày test start nhưng status vẫn là dev"
+  - id: L1_TEST_START_OVERDUE
+    name: "Quá test start date, chưa start test"
     level: 1
     type: reactive
     condition: >
-      test_start_date == today
-      and status in ('New', 'In Analysis', 'InDev', 'Reviewed')
+      test_start_date <= today
+      and status_rank < rank('InTest')
     recipients: [qe_pic, assignee]
     channels: [qe_channel, dev_channel]
-    message: "🔴 {key} hôm nay phải start test nhưng đang {status}."
+    message: "🔴 {key} đã qua test start date ({test_start_date}) nhưng đang {status}."
 
   - id: L1_TEST_COMPLETE_OVERDUE
     name: "Quá test complete date, chưa qua InTest"
@@ -109,7 +109,7 @@ rules:
       and status == 'InReview'
     recipients: [qe_pic]
     channels: [qe_channel]
-    message: "🟠 {key} quá hạn ({test_complete_date}), đang {status}."
+    message: "🟠 {key} quá hạn test complete ({test_complete_date}), đang {status}"
 
   - id: L2_DUE_TODAY_SP3_NOT_TESTING
     name: "Hết hạn hôm nay, SP=3, chưa InTest/InReview"

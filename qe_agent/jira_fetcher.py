@@ -29,7 +29,7 @@ warnings.filterwarnings("ignore", category=InsecureRequestWarning)
 
 # Normalize Jira status names về canonical names dùng trong rules.yaml
 _STATUS_MAP = {
-    "done": "Done", "live": "Live", "cancelled": "Cancelled",
+    "done": "Done", "resolved": "Resolved", "live": "Live", "cancelled": "Cancelled",
     "in dev": "InDev", "in development": "InDev", "indev": "InDev",
     "in progress": "In Progress",
     "in test": "InTest", "intest": "InTest", "testing": "InTest",

@@ -15,7 +15,7 @@ from typing import Optional
 #            WALKTHROUGH > READY FOR TESTING > IN TEST > IN REVIEW > DONE > LIVE
 #            + BLOCKED / ON HOLD, CANCELLED (nhánh riêng)
 # ---------------------------------------------------------------------------
-STATUS_BLOCKED   = {"blocked / on hold", "blocked", "on hold"}
+STATUS_BLOCKED   = {"blocked / on hold", "blocked", "on hold", "cancelled"}
 STATUS_TESTING   = {"in test"}                       # đang test
 STATUS_PRE_TEST  = {"ready for testing"}             # chờ test, chưa bắt đầu
 STATUS_POST_TEST = {"in review", "done", "live"}     # đã qua test

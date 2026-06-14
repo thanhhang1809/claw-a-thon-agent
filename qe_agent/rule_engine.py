@@ -12,7 +12,8 @@ STATUS_RANK = {
     "In Analysis": 0, "Reviewed": 0,
     "Blocked": 1, "InDev": 1, "In Progress": 1,
     "Walkthrough": 2, "Ready for testing": 3,
-    "InTest": 4, "InReview": 5, "Done": 6, "Live": 7,
+    "InTest": 4, "InReview": 5,
+    "Done": 6, "Resolved": 6, "Live": 7, "Cancelled": 7,
 }
 
 
@@ -158,7 +159,8 @@ class RuleEngine:
 
     def _record(self, out, fired, t, r, today, extra_fmt=None):
         fmt = {k: t.get(k, "") for k in ("key", "status", "story_point",
-                                          "test_complete_date", "assignee", "sandbox_date")}
+                                          "test_start_date", "test_complete_date",
+                                          "assignee", "sandbox_date")}
         if extra_fmt:
             fmt.update(extra_fmt)
         try:

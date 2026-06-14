@@ -51,13 +51,19 @@ def _mention(name, no_qe=False):
 
 # ---------------------------------------------------------------------------
 # Routing: DailyReport → dict[channel → list[(header, [(ticket, extra)])]
+# Tickets vi phạm nhiều rule trong cùng level → gộp thành 1 block, merge reasons.
 # ---------------------------------------------------------------------------
 def route(report: DailyReport) -> dict[str, list]:
-    buckets: dict[str, dict[str, list]] = defaultdict(lambda: defaultdict(list))
+    # buckets[channel][header][ticket_id] = (ticket, [reasons])
+    buckets: dict[str, dict[str, dict]] = defaultdict(lambda: defaultdict(dict))
 
-    def add(channels, header, ticket, extra=None):
+    def add(channels, header, ticket, reason: str | None = None):
         for ch in channels:
-            buckets[ch][header].append((ticket, extra))
+            tid = ticket.id
+            if tid not in buckets[ch][header]:
+                buckets[ch][header][tid] = (ticket, [])
+            if reason:
+                buckets[ch][header][tid][1].append(reason)
 
     for t in report.need_start_today:
         add([CH_QE] + dev_channels_for(t.component), "📋 Test Start Today", t)
@@ -72,12 +78,20 @@ def route(report: DailyReport) -> dict[str, list]:
         for r in results:
             chans = ([CH_QE] if r.send_qe else []) + \
                     (dev_channels_for(r.ticket.component) if r.send_dev else [])
-            add(chans, LEVEL_NAME[lvl], r.ticket, {"Reason": r.reason})
+            add(chans, LEVEL_NAME[lvl], r.ticket, r.reason)
 
-    return {
-        ch: list(by_header.items())
-        for ch, by_header in buckets.items()
-    }
+    # Flatten: dict[ticket_id -> (ticket, reasons)] → list[(ticket, extra)]
+    out: dict[str, list] = {}
+    for ch, by_header in buckets.items():
+        sections = []
+        for header, ticket_map in by_header.items():
+            items = [
+                (t, {"Reasons": reasons} if reasons else None)
+                for t, reasons in ticket_map.values()
+            ]
+            sections.append((header, items))
+        out[ch] = sections
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -99,8 +113,6 @@ def _ticket_html(t: Ticket, extra: dict | None = None) -> str:
     ]
     if t.component:
         rows.append(("Component", t.component))
-    for k, v in (extra or {}).items():
-        rows.append((k, str(v)))
 
     facts_html = "".join(
         f'<tr>'
@@ -109,11 +121,34 @@ def _ticket_html(t: Ticket, extra: dict | None = None) -> str:
         f'</tr>'
         for k, v in rows
     )
+
+    # Render reasons as numbered list if multiple, single line if one
+    reasons_html = ""
+    reasons = (extra or {}).get("Reasons", [])
+    if reasons:
+        if len(reasons) == 1:
+            reasons_html = (
+                f'<div style="margin-top:8px;padding:6px 10px;background:#fff8f8;'
+                f'border-left:3px solid #d32f2f;border-radius:3px;font-size:13px">'
+                f'{reasons[0]}</div>'
+            )
+        else:
+            items = "".join(
+                f'<li style="margin:3px 0">{r}</li>' for r in reasons
+            )
+            reasons_html = (
+                f'<div style="margin-top:8px;padding:6px 10px;background:#fff8f8;'
+                f'border-left:3px solid #d32f2f;border-radius:3px;font-size:13px">'
+                f'<ol style="margin:0;padding-left:18px">{items}</ol>'
+                f'</div>'
+            )
+
     return (
         f'<div style="margin:6px 0;padding:10px 14px;background:#fff;'
         f'border:1px solid #e0e0e0;border-radius:6px">'
         f'<div style="font-weight:600;margin-bottom:6px">🔸 {key_html} — {t.title}</div>'
         f'<table style="border-collapse:collapse">{facts_html}</table>'
+        f'{reasons_html}'
         f'</div>'
     )
 
@@ -180,9 +215,10 @@ def render_text(report: DailyReport) -> str:
                 out.append(f"  🔸 {t.id} — {t.title}")
                 out.append(f"    Status={t.status}  SP={t.story_point}  "
                            f"QE={t.qe_pic or '—'}  Assignee={t.assignee}")
-                if extra:
-                    for k, v in extra.items():
-                        out.append(f"    {k}: {v}")
+                reasons = (extra or {}).get("Reasons", [])
+                for i, r in enumerate(reasons, 1):
+                    prefix = f"    {i}." if len(reasons) > 1 else "    Reason:"
+                    out.append(f"{prefix} {r}")
         out.append("")
     return "\n".join(out)
 
