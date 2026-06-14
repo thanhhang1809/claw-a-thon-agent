@@ -9,39 +9,10 @@ Set env vars:
 from __future__ import annotations
 import os
 import re
-import warnings
 from datetime import date, datetime
 from typing import Optional
 import requests
-from urllib3.exceptions import InsecureRequestWarning
 from .models import Ticket, STATUS_BLOCKED
-
-# Load .env từ thư mục cha
-_env_file = os.path.join(os.path.dirname(__file__), "..", ".env")
-if os.path.exists(_env_file):
-    for _ln in open(_env_file, encoding="utf-8"):
-        _ln = _ln.strip()
-        if _ln and not _ln.startswith("#") and "=" in _ln:
-            _k, _v = _ln.split("=", 1)
-            os.environ.setdefault(_k.strip(), _v.strip().strip('"').strip("'"))
-
-warnings.filterwarnings("ignore", category=InsecureRequestWarning)
-
-# Normalize Jira status names về canonical names dùng trong rules.yaml
-_STATUS_MAP = {
-    "done": "Done", "resolved": "Resolved", "live": "Live", "cancelled": "Cancelled",
-    "in dev": "InDev", "in development": "InDev", "indev": "InDev",
-    "in progress": "In Progress",
-    "in test": "InTest", "intest": "InTest", "testing": "InTest",
-    "in review": "InReview", "inreview": "InReview",
-    "ready for testing": "Ready for testing", "ready for test": "Ready for testing",
-    "walkthrough": "Walkthrough", "new": "New", "open": "Open",
-    "backlog": "Backlog", "blocked": "Blocked", "on hold": "Blocked",
-    "blocked / on hold": "Blocked", "in analysis": "In Analysis", "reviewed": "Reviewed",
-}
-
-def _norm_status(s: str) -> str:
-    return _STATUS_MAP.get((s or "").lower(), s)
 
 # JQL filter theo roadmap, gồm bug. Sửa cho đúng project/board của bạn.
 ROADMAP_JQL = os.getenv(
@@ -56,8 +27,8 @@ FIELD_MAP = {
     "test_start_date":    "customfield_13703",
     "test_complete_date": "customfield_13704",
     "qe_pic":             "customfield_10418",  # QC PIC
-    # TODO: NoQE flag — chưa xác nhận customfield/label. Điền khi biết.
-    # "no_qe":            "customfield_xxxxx",
+    # Lưu ý: NoQE KHÔNG ở đây vì nó lấy từ label (xem NOQE_LABELS bên dưới),
+    # không phải customfield.
 }
 
 # Field Sprint (Jira Server). TODO: điền đúng customfield ID của bạn (tìm "Sprint").
@@ -85,7 +56,7 @@ def _search(jql: str) -> list[Ticket]:
             f"{_base()}/rest/api/2/search",
             params={"jql": jql, "startAt": start_at,
                     "maxResults": page, "fields": ",".join(FETCH_FIELDS)},
-            headers=_headers(), timeout=30, verify=False,
+            headers=_headers(), timeout=30,
         )
         resp.raise_for_status()
         data = resp.json()
@@ -149,7 +120,7 @@ def list_active_sprints(board_id: str | int) -> list[dict]:
     Trả [{id, name, state, startDate, endDate}, ...]."""
     resp = requests.get(
         f"{_base()}/rest/agile/1.0/board/{board_id}/sprint",
-        params={"state": "active"}, headers=_headers(), timeout=30, verify=False,
+        params={"state": "active"}, headers=_headers(), timeout=30,
     )
     resp.raise_for_status()
     out = []
@@ -175,7 +146,7 @@ def list_boards_for_project(project_key: str) -> list[dict]:
         resp = requests.get(
             f"{_base()}/rest/agile/1.0/board",
             params={"projectKeyOrId": project_key, "startAt": start, "maxResults": 50},
-            headers=_headers(), timeout=30, verify=False,
+            headers=_headers(), timeout=30,
         )
         resp.raise_for_status()
         data = resp.json()
@@ -261,7 +232,7 @@ def _normalize(issue: dict) -> Ticket:
     f = issue["fields"]
     def cf(key):
         return f.get(FIELD_MAP[key]) if key in FIELD_MAP else None
-    status_name = _norm_status((f.get("status") or {}).get("name", ""))
+    status_name = (f.get("status") or {}).get("name", "")
     assignee_name, assignee_user = _user(f.get("assignee"))
     qe_name, qe_user = _user(cf("qe_pic"))
     labels = [l.lower() for l in (f.get("labels", []) or [])]

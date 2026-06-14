@@ -23,8 +23,9 @@ if os.path.exists(_env_file):
             _k, _v = _ln.split("=", 1)
             os.environ.setdefault(_k.strip(), _v.strip().strip('"').strip("'"))
 
-LEVEL_NAME = {1: "🔴 LEVEL 1 — Violent", 2: "🟠 LEVEL 2 — Risk", 3: "🟡 LEVEL 3 — Commit Risk"}
-LEVEL_COLOR = {1: "#d32f2f", 2: "#e65100", 3: "#f9a825"}
+LEVEL_NAME = {-1: "📋 CHECKLIST", 0: "⚪ DATA", 1: "🔴 LEVEL 1 — Violent", 2: "🟠 LEVEL 2 — Risk", 3: "🟡 LEVEL 3 — Commit Risk"}
+LEVEL_COLOR = {-1: "#1565c0", 0: "#757575", 1: "#d32f2f", 2: "#e65100", 3: "#f9a825"}
+LEVEL_DOT = {-1: "🔹", 0: "⚪", 1: "🔴", 2: "🟠", 3: "🟡"}
 SECTION_COLOR = {
     "📋 Test Start Today":    "#1565c0",
     "✅ Test Complete Today":  "#2e7d32",
@@ -50,146 +51,165 @@ def _mention(name, no_qe=False):
 
 
 # ---------------------------------------------------------------------------
-# Routing: DailyReport → dict[channel → list[(header, [(ticket, extra)])]
-# Tickets vi phạm nhiều rule trong cùng level → gộp thành 1 block, merge reasons.
+# Routing: DailyReport → dict[channel → list[group]]
+# Mỗi group = {"level": int, "rule_id": str, "label": str, "rows": [Row,...]}
+# Row = {"ticket": Ticket, "reasons": [str,...]}
+# Nhóm: theo level (DATA/L1/L2/L3) rồi theo rule_id — giống ảnh mẫu.
+# Simple filters (start/complete/sandbox/blocked) là các "rule_id" ảo.
 # ---------------------------------------------------------------------------
+# pseudo rule_id cho simple filters
+SIMPLE_RULES = {
+    "CHECK_TEST_START":    ("📋 Test Start Today", -1),
+    "CHECK_TEST_COMPLETE": ("✅ Test Complete Today", -1),
+    "CHECK_SANDBOX":       ("📦 Sandbox Tomorrow", -1),
+    "CHECK_BLOCKED":       ("⛔ Blocked", -1),
+}
+
+
 def route(report: DailyReport) -> dict[str, list]:
-    # buckets[channel][header][ticket_id] = (ticket, [reasons])
-    buckets: dict[str, dict[str, dict]] = defaultdict(lambda: defaultdict(dict))
+    # buckets[channel][(level, rule_id)] = {label, rows: {tid: (ticket, [reasons])}}
+    buckets: dict[str, dict] = defaultdict(lambda: defaultdict(
+        lambda: {"label": "", "level": 0, "rows": {}}))
 
-    def add(channels, header, ticket, reason: str | None = None):
+    def add(channels, level, rule_id, label, ticket, reason=None):
         for ch in channels:
+            g = buckets[ch][(level, rule_id)]
+            g["label"] = label
+            g["level"] = level
             tid = ticket.id
-            if tid not in buckets[ch][header]:
-                buckets[ch][header][tid] = (ticket, [])
+            if tid not in g["rows"]:
+                g["rows"][tid] = (ticket, [])
             if reason:
-                buckets[ch][header][tid][1].append(reason)
+                g["rows"][tid][1].append(reason)
 
+    # --- simple filters (checklist thông tin, level -1) ---
     for t in report.need_start_today:
-        add([CH_QE] + dev_channels_for(t.component), "📋 Test Start Today", t)
+        add([CH_QE] + dev_channels_for(t.component), -1, "CHECK_TEST_START",
+            "📋 Test Start Today", t)
     for t in report.need_complete_today:
-        add([CH_QE] + dev_channels_for(t.component), "✅ Test Complete Today", t)
+        add([CH_QE] + dev_channels_for(t.component), -1, "CHECK_TEST_COMPLETE",
+            "✅ Test Complete Today", t)
     for t in report.sandbox_tomorrow:
-        add(dev_channels_for(t.component), "📦 Sandbox Tomorrow", t)
+        add(dev_channels_for(t.component), -1, "CHECK_SANDBOX",
+            "📦 Sandbox Tomorrow", t)
     for t in report.blocked:
-        add(dev_channels_for(t.component), "⛔ Blocked", t)
+        add(dev_channels_for(t.component), -1, "CHECK_BLOCKED",
+            "⛔ Blocked", t)
 
-    for results, lvl in [(report.level1, 1), (report.level2, 2), (report.level3, 3)]:
+    # --- rule results theo level ---
+    for results, lvl in [(report.level0, 0), (report.level1, 1),
+                         (report.level2, 2), (report.level3, 3)]:
         for r in results:
-            chans = ([CH_QE] if r.send_qe else []) + \
-                    (dev_channels_for(r.ticket.component) if r.send_dev else [])
-            add(chans, LEVEL_NAME[lvl], r.ticket, r.reason)
+            # L0 (DATA): luôn gửi QE; L1-3 theo cờ Person 2 set
+            if lvl == 0:
+                chans = [CH_QE] + dev_channels_for(r.ticket.component)
+            else:
+                chans = ([CH_QE] if r.send_qe else []) + \
+                        (dev_channels_for(r.ticket.component) if r.send_dev else [])
+            add(chans, lvl, r.rule_id, r.rule_id, r.ticket, r.reason)
 
-    # Flatten: dict[ticket_id -> (ticket, reasons)] → list[(ticket, extra)]
+    # Flatten -> sort theo level, rồi rule_id
     out: dict[str, list] = {}
-    for ch, by_header in buckets.items():
-        sections = []
-        for header, ticket_map in by_header.items():
-            items = [
-                (t, {"Reasons": reasons} if reasons else None)
-                for t, reasons in ticket_map.values()
-            ]
-            sections.append((header, items))
-        out[ch] = sections
+    for ch, groups in buckets.items():
+        glist = []
+        for (level, rule_id), g in groups.items():
+            rows = [{"ticket": t, "reasons": reasons}
+                    for t, reasons in g["rows"].values()]
+            glist.append({"level": level, "rule_id": rule_id,
+                          "label": g["label"], "rows": rows})
+        glist.sort(key=lambda x: (x["level"], x["rule_id"]))
+        out[ch] = glist
     return out
 
 
 # ---------------------------------------------------------------------------
-# HTML builder
+# HTML builder — bảng nhóm theo LEVEL -> rule_id, cột có Status
 # ---------------------------------------------------------------------------
-def _ticket_html(t: Ticket, extra: dict | None = None) -> str:
+def _ticket_link(t: Ticket) -> str:
     base = os.getenv("JIRA_BASE_URL", "").rstrip("/")
     if base:
-        key_html = (f'<a href="{base}/browse/{t.id}" style="color:#1565c0;'
-                    f'font-family:monospace;font-weight:700;text-decoration:none">{t.id}</a>')
-    else:
-        key_html = f'<span style="font-family:monospace;font-weight:700">{t.id}</span>'
+        return (f'<a href="{base}/browse/{t.id}" style="color:#1565c0;'
+                f'font-family:monospace;font-weight:700;text-decoration:none">{t.id}</a>')
+    return f'<span style="font-family:monospace;font-weight:700">{t.id}</span>'
 
-    rows = [
-        ("Status",      t.status or "—"),
-        ("Story Point", str(t.story_point) if t.story_point is not None else "—"),
-        ("QC PIC",      _mention(t.qe_pic)),
-        ("Assignee",    _mention(t.assignee, t.no_qe)),
-    ]
-    if t.component:
-        rows.append(("Component", t.component))
 
-    facts_html = "".join(
-        f'<tr>'
-        f'<td style="color:#888;font-size:12px;padding:3px 10px;white-space:nowrap">{k}</td>'
-        f'<td style="font-size:13px;padding:3px 10px;color:#333">{v}</td>'
-        f'</tr>'
-        for k, v in rows
-    )
+def _rule_table(group: dict) -> str:
+    """Một rule = 1 bảng: Ticket | Status | Assignee | QE PIC | Chi tiết."""
+    level = group["level"]
+    dot = LEVEL_DOT.get(level, "⚪")
+    th = ('style="text-align:left;padding:6px 10px;font-size:11px;color:#666;'
+          'background:#f0f0f0;border-bottom:1px solid #ddd;white-space:nowrap"')
+    td = 'style="padding:6px 10px;font-size:13px;border-bottom:1px solid #eee;vertical-align:top"'
 
-    # Render reasons as numbered list if multiple, single line if one
-    reasons_html = ""
-    reasons = (extra or {}).get("Reasons", [])
-    if reasons:
-        if len(reasons) == 1:
-            reasons_html = (
-                f'<div style="margin-top:8px;padding:6px 10px;background:#fff8f8;'
-                f'border-left:3px solid #d32f2f;border-radius:3px;font-size:13px">'
-                f'{reasons[0]}</div>'
-            )
+    rows_html = ""
+    for row in group["rows"]:
+        t = row["ticket"]
+        reasons = row["reasons"]
+        if not reasons:
+            detail = "—"
+        elif len(reasons) == 1:
+            detail = f"{dot} {reasons[0]}"
         else:
-            items = "".join(
-                f'<li style="margin:3px 0">{r}</li>' for r in reasons
-            )
-            reasons_html = (
-                f'<div style="margin-top:8px;padding:6px 10px;background:#fff8f8;'
-                f'border-left:3px solid #d32f2f;border-radius:3px;font-size:13px">'
-                f'<ol style="margin:0;padding-left:18px">{items}</ol>'
-                f'</div>'
-            )
+            detail = f"{dot} " + "<br>".join(
+                f"{i}. {r}" for i, r in enumerate(reasons, 1))
+        rows_html += (
+            f'<tr>'
+            f'<td {td}>{_ticket_link(t)}</td>'
+            f'<td {td}><span style="font-size:12px;color:#555">{t.status or "—"}</span></td>'
+            f'<td {td}>{t.assignee or "—"}{" <b style=color:#d32f2f>[NoQE]</b>" if t.no_qe else ""}</td>'
+            f'<td {td}>{t.qe_pic or "—"}</td>'
+            f'<td {td}>{detail}</td>'
+            f'</tr>'
+        )
 
+    n = len(group["rows"])
+    # nhóm checklist (level -1) hiện label; nhóm rule hiện rule_id
+    heading = group["label"] if group["level"] == -1 else group["rule_id"]
     return (
-        f'<div style="margin:6px 0;padding:10px 14px;background:#fff;'
-        f'border:1px solid #e0e0e0;border-radius:6px">'
-        f'<div style="font-weight:600;margin-bottom:6px">🔸 {key_html} — {t.title}</div>'
-        f'<table style="border-collapse:collapse">{facts_html}</table>'
-        f'{reasons_html}'
-        f'</div>'
+        f'<div style="font-size:12px;color:#444;font-weight:600;margin:10px 0 4px">'
+        f'{heading} <span style="color:#999;font-weight:400">({n} ticket)</span></div>'
+        f'<table style="border-collapse:collapse;width:100%;background:#fff;'
+        f'border:1px solid #e0e0e0;border-radius:4px;overflow:hidden">'
+        f'<tr><th {th}>Ticket</th><th {th}>Status</th><th {th}>Assignee</th>'
+        f'<th {th}>QE PIC</th><th {th} style="width:50%">Chi tiết</th></tr>'
+        f'{rows_html}</table>'
     )
 
 
-def _build_html(channel_title: str, date_str: str,
-                sections: list[tuple[str, list]]) -> str:
-    sections_html = ""
-    for header, items in sections:
-        color = LEVEL_COLOR.get(
-            next((k for k, v in LEVEL_NAME.items() if v == header), None),
-            SECTION_COLOR.get(header, "#1565c0")
-        )
-        tickets_html = "".join(_ticket_html(t, extra) for t, extra in items)
-        sections_html += (
-            f'<div style="margin-bottom:16px">'
+def _build_html(channel_title: str, date_str: str, groups: list[dict]) -> str:
+    # gom group theo level để in header level
+    by_level: dict[int, list] = defaultdict(list)
+    for g in groups:
+        by_level[g["level"]].append(g)
+
+    body = ""
+    for level in sorted(by_level):
+        color = LEVEL_COLOR.get(level, "#757575")
+        total = sum(len(g["rows"]) for g in by_level[level])
+        suffix = "ticket" if level == -1 else "vi phạm"
+        body += (
             f'<div style="background:{color};color:#fff;padding:9px 14px;'
-            f'border-radius:6px 6px 0 0;font-weight:700;font-size:13px">'
-            f'{header} &nbsp;<span style="opacity:.8;font-weight:400">({len(items)} ticket)</span>'
-            f'</div>'
-            f'<div style="padding:8px;background:#fafafa;border:1px solid #e0e0e0;'
-            f'border-top:none;border-radius:0 0 6px 6px">{tickets_html}</div>'
-            f'</div>'
+            f'border-radius:6px;font-weight:700;font-size:13px;margin:18px 0 8px">'
+            f'{LEVEL_NAME.get(level, "?")} &nbsp;'
+            f'<span style="opacity:.85;font-weight:400">— {total} {suffix}</span></div>'
         )
+        for g in by_level[level]:
+            body += _rule_table(g)
 
     return f"""<!doctype html>
 <html><head><meta charset="utf-8"></head>
 <body style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;
              background:#f5f5f5;margin:0;padding:20px">
-<div style="max-width:680px;margin:0 auto">
-  <div style="background:#1565c0;border-radius:10px 10px 0 0;
-              padding:20px 24px;color:#fff">
+<div style="max-width:760px;margin:0 auto">
+  <div style="background:#1565c0;border-radius:10px 10px 0 0;padding:20px 24px;color:#fff">
     <div style="font-size:18px;font-weight:700">🛡️ QA Watchdog — {channel_title}</div>
     <div style="font-size:13px;opacity:.85;margin-top:4px">📅 {date_str}</div>
   </div>
-  <div style="background:#fff;border-radius:0 0 10px 10px;
-              padding:20px 24px;border:1px solid #e0e0e0;border-top:none">
-    {sections_html}
+  <div style="background:#fff;border-radius:0 0 10px 10px;padding:18px 24px;
+              border:1px solid #e0e0e0;border-top:none">
+    {body}
     <div style="margin-top:20px;padding-top:12px;border-top:1px solid #f0f0f0;
-                font-size:11px;color:#aaa">
-      Generated by QA Watchdog Agent • {date_str}
-    </div>
+                font-size:11px;color:#aaa">Generated by QA Watchdog Agent • {date_str}</div>
   </div>
 </div>
 </body></html>"""
@@ -202,23 +222,28 @@ def render_text(report: DailyReport) -> str:
     routed = route(report)
     out = []
     for ch in [CH_QE, CH_DEV_MS, CH_DEV_CRM]:
-        out.append("=" * 55)
+        out.append("=" * 60)
         out.append(f"### CHANNEL: {CHANNEL_TITLE[ch]}")
-        out.append("=" * 55)
-        sections = routed.get(ch)
-        if not sections:
+        out.append("=" * 60)
+        groups = routed.get(ch)
+        if not groups:
             out.append("(no messages)\n")
             continue
-        for header, items in sections:
-            out.append(f"\n[{header}]")
-            for t, extra in items:
-                out.append(f"  🔸 {t.id} — {t.title}")
-                out.append(f"    Status={t.status}  SP={t.story_point}  "
-                           f"QE={t.qe_pic or '—'}  Assignee={t.assignee}")
-                reasons = (extra or {}).get("Reasons", [])
-                for i, r in enumerate(reasons, 1):
-                    prefix = f"    {i}." if len(reasons) > 1 else "    Reason:"
-                    out.append(f"{prefix} {r}")
+        cur_level = None
+        for g in groups:
+            if g["level"] != cur_level:
+                cur_level = g["level"]
+                total = sum(len(x["rows"]) for x in groups if x["level"] == cur_level)
+                suffix = "ticket" if cur_level == -1 else "vi phạm"
+                out.append(f"\n{LEVEL_NAME.get(cur_level,'?')} — {total} {suffix}")
+            out.append(f"  [{g['rule_id']}]  ({len(g['rows'])} ticket)")
+            for row in g["rows"]:
+                t = row["ticket"]
+                out.append(f"    {t.id:12} status={t.status or '—':18} "
+                           f"assignee={t.assignee or '—':10} QE={t.qe_pic or '—'}")
+                for i, r in enumerate(row["reasons"], 1):
+                    pfx = f"      {i}." if len(row["reasons"]) > 1 else "      →"
+                    out.append(f"{pfx} {r}")
         out.append("")
     return "\n".join(out)
 
@@ -252,19 +277,18 @@ def send(report: DailyReport, dry_run: bool = False) -> None:
     if not gmail_user or not gmail_pass:
         raise RuntimeError("Thiếu GMAIL_USER / GMAIL_APP_PASSWORD trong .env")
 
-    for ch, sections in routed.items():
-        if not sections:
+    for ch, groups in routed.items():
+        if not groups:
             continue
         to_email = os.getenv(CHANNEL_EMAIL_ENV[ch])
         if not to_email:
             print(f"[skip] {CHANNEL_EMAIL_ENV[ch]} chưa set — bỏ qua {ch}")
             continue
 
-        has_l1 = any(h == LEVEL_NAME[1] for h, _ in sections)
-        has_l2 = any(h == LEVEL_NAME[2] for h, _ in sections)
-        prefix = "🔴" if has_l1 else ("🟠" if has_l2 else "📋")
+        levels = {g["level"] for g in groups}
+        prefix = "🔴" if 1 in levels else ("🟠" if 2 in levels else "📋")
         subject = f"{prefix} QA Watchdog {date_str} — {CHANNEL_TITLE[ch]}"
 
-        html = _build_html(CHANNEL_TITLE[ch], date_str, sections)
+        html = _build_html(CHANNEL_TITLE[ch], date_str, groups)
         _send_one(to_email, subject, html, gmail_user, gmail_pass)
         print(f"[sent] {subject} → {to_email}")

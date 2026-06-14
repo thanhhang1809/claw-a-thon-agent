@@ -64,6 +64,7 @@ class RuleEngine:
         t = dict(ticket)
         ns = {
             "today": today,
+            "timedelta": timedelta,
             "is_empty": is_empty,
             "workdays_add": lambda d, n: workdays_add(d, n, self.holidays),
             "rank": lambda s: STATUS_RANK.get(s, 0),

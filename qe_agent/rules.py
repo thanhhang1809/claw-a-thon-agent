@@ -10,7 +10,7 @@ from .models import Ticket, DailyReport, RuleResult, Level
 from .rule_engine import RuleEngine
 
 _RULES_YAML = os.path.join(os.path.dirname(__file__), "rules.yaml")
-_LEVEL_MAP = {1: Level.VIOLENT, 2: Level.RISK, 3: Level.COMMIT}
+_LEVEL_MAP = {0: Level.DATA, 1: Level.VIOLENT, 2: Level.RISK, 3: Level.COMMIT}
 
 
 def _to_dict(t: Ticket) -> dict:
@@ -64,7 +64,7 @@ def run(tickets: list[Ticket], today: date | None = None) -> DailyReport:
             continue
 
         ticket = ticket_by_key.get(key)
-        if not ticket or level_int == 0:
+        if not ticket:
             continue
 
         rule_def = rules_by_id.get(v["rule"], {})
@@ -81,7 +81,9 @@ def run(tickets: list[Ticket], today: date | None = None) -> DailyReport:
             mention_assignee="assignee" in recipients,
         )
 
-        if level_int == 1:
+        if level_int == 0:
+            report.level0.append(result)
+        elif level_int == 1:
             report.level1.append(result)
         elif level_int == 2:
             report.level2.append(result)

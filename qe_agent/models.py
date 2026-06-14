@@ -15,7 +15,7 @@ from typing import Optional
 #            WALKTHROUGH > READY FOR TESTING > IN TEST > IN REVIEW > DONE > LIVE
 #            + BLOCKED / ON HOLD, CANCELLED (nhánh riêng)
 # ---------------------------------------------------------------------------
-STATUS_BLOCKED   = {"blocked / on hold", "blocked", "on hold", "cancelled"}
+STATUS_BLOCKED   = {"blocked / on hold", "blocked", "on hold"}
 STATUS_TESTING   = {"in test"}                       # đang test
 STATUS_PRE_TEST  = {"ready for testing"}             # chờ test, chưa bắt đầu
 STATUS_POST_TEST = {"in review", "done", "live"}     # đã qua test
@@ -82,6 +82,7 @@ class Ticket:
 # RULE RESULT  (Person 2 internal -> DailyReport)
 # ---------------------------------------------------------------------------
 class Level(IntEnum):
+    DATA = 0      # Level 0 — thiếu ngày (sandbox/test start/complete)
     VIOLENT = 1   # Level 1
     RISK = 2      # Level 2
     COMMIT = 3    # Level 3
@@ -112,6 +113,7 @@ class DailyReport:
     sandbox_tomorrow: list[Ticket] = field(default_factory=list)
     blocked: list[Ticket] = field(default_factory=list)
     # rule matches grouped by level (Module 2B) ---------------------------
+    level0: list[RuleResult] = field(default_factory=list)  # DATA — thiếu ngày
     level1: list[RuleResult] = field(default_factory=list)
     level2: list[RuleResult] = field(default_factory=list)
     level3: list[RuleResult] = field(default_factory=list)
@@ -120,5 +122,5 @@ class DailyReport:
         return not any([
             self.need_start_today, self.need_complete_today,
             self.sandbox_tomorrow, self.blocked,
-            self.level1, self.level2, self.level3,
+            self.level0, self.level1, self.level2, self.level3,
         ])
