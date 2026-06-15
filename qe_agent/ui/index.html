@@ -246,20 +246,71 @@ VIEWS.scan=()=>{
 VIEWS.rules=async()=>{
   setView('<div class="p-6 text-slate-400">Đang tải rules…</div>');
   const r=await API('/api/rules');
-  const wrap=el('<div class="h-full overflow-y-auto scroll p-6 space-y-6"></div>');
-  [0,1,2,3].forEach(l=>{
-    const rs=(r.rules||[]).filter(x=>x.level===l); if(!rs.length)return;
-    const L=LEVELS[l];
-    const sec=el(`<div><h3 class="font-semibold mb-2 text-${L.c}-700">${L.e} ${L.n} — ${rs.length} rule</h3>
-      <div class="grid grid-cols-2 gap-3"></div></div>`);
-    const g=sec.querySelector('.grid');
-    rs.forEach(x=>g.appendChild(el(`<div class="bg-white border rounded-xl p-4">
-      <div class="flex items-center gap-2 mb-1"><span class="font-mono text-xs bg-slate-100 px-2 py-0.5 rounded">${esc(x.id)}</span>
-        <span class="text-[10px] uppercase tracking-wide text-slate-400">${esc(x.type)}</span></div>
-      <div class="font-medium text-sm">${esc(x.name)}</div>
-      <div class="text-xs text-slate-500 mt-1 font-mono bg-slate-50 rounded p-2 break-words">${esc(x.condition)}</div>
-      <div class="text-xs mt-2 flex flex-wrap gap-1">${x.channels.map(c=>badge('sky',c)).join('')}${x.recipients.map(c=>badge('violet',c)).join('')}</div>
-    </div>`)));
+  const rules=r.rules||[];
+
+  // Mức ưu tiên dễ hiểu (thay "Level 0/1/2/3")
+  const PRIO={
+    0:{label:'Thiếu dữ liệu',   e:'⚪', c:'slate',  desc:'Ticket chưa điền đủ ngày — agent chưa đánh giá được.'},
+    1:{label:'Khẩn cấp',        e:'🔴', c:'red',    desc:'Đã vi phạm — cần xử lý ngay hôm nay.'},
+    2:{label:'Cần chú ý',       e:'🟠', c:'orange', desc:'Có nguy cơ trễ tiến độ — theo dõi sát.'},
+    3:{label:'Theo dõi sớm',    e:'🟡', c:'yellow', desc:'Cảnh báo sớm để kịp xử lý, tránh trễ.'},
+  };
+  // Diễn giải "khi nào agent bắn cảnh báo" theo từng rule (chính xác, dễ hiểu)
+  const WHEN={
+    L0_MISSING_DATES:'Ticket thiếu test start, test complete hoặc sandbox date.',
+    L1_TEST_START_OVERDUE:'Đã qua ngày bắt đầu test mà ticket vẫn chưa được test.',
+    L1_TEST_COMPLETE_OVERDUE:'Đã qua hạn test xong mà ticket vẫn chưa test xong.',
+    L1_TOO_MANY_SAME_TEST_START:'Một QE bị giao hơn 3 ticket cùng bắt đầu test trong một ngày.',
+    L1_SANDBOX_DATE_WRONG_STATUS:'Tới ngày lên sandbox nhưng ticket chưa sẵn sàng (chưa Walkthrough/Ready for Testing).',
+    L2_OVERDUE_STILL_INREVIEW:'Đã qua hạn test xong nhưng ticket còn kẹt ở bước Review.',
+    L2_DUE_TODAY_SP3_NOT_TESTING:'Ticket nhỏ (3 điểm) tới hạn test hôm nay mà chưa vào test.',
+    L2_DUE_1DAY_AGO_SP5_NOT_TESTING:'Ticket vừa (5 điểm) đã trễ hạn 1 ngày mà chưa vào test.',
+    L2_DUE_2DAYS_AGO_SP8_NOT_TESTING:'Ticket lớn (8 điểm) đã trễ hạn 2 ngày mà chưa vào test.',
+    L3_DUE_TODAY_SP3_IN_TEST:'Ticket nhỏ (3 điểm) tới hạn hôm nay, đang được test — bám sát.',
+    L3_DUE_1DAY_AGO_SP5_OR_8_IN_TEST:'Ticket vừa/lớn (5–8 điểm) trễ 1 ngày, đang test — dễ chậm tiếp.',
+    L3_PRE_SANDBOX_2DAYS_SP8_NOT_INDEV:'Ticket lớn (8 điểm) còn 2 ngày tới sandbox mà chưa code xong.',
+    L3_PRE_SANDBOX_1DAY_SP5_NOT_INDEV:'Ticket vừa (5 điểm) còn 1 ngày tới sandbox mà chưa code xong.',
+  };
+  const CH_LABEL={qe_channel:'kênh QE',dev_channel:'kênh Dev'};
+  const RC_LABEL={qe_pic:'QE PIC',assignee:'Assignee',dev:'Dev'};
+
+  const wrap=el('<div class="h-full overflow-y-auto scroll p-6 space-y-7"></div>');
+
+  // --- Thanh tóm tắt đầu trang ---
+  const cnt={0:0,1:0,2:0,3:0}; rules.forEach(x=>{if(cnt[x.level]!=null)cnt[x.level]++;});
+  const summary=el(`<div class="bg-white border rounded-xl p-4 flex flex-wrap items-center gap-4">
+    <div class="text-sm"><span class="font-bold text-base">${rules.length}</span> quy tắc đang theo dõi</div>
+    <div class="flex flex-wrap gap-2 text-xs">
+      ${[1,2,3,0].map(l=>cnt[l]?`<span class="px-2.5 py-1 rounded-full bg-${PRIO[l].c}-100 text-${PRIO[l].c}-700 font-semibold">${PRIO[l].e} ${cnt[l]} ${PRIO[l].label}</span>`:'').join('')}
+    </div>
+  </div>`);
+  wrap.appendChild(summary);
+
+  // --- Từng mức ưu tiên ---
+  [1,2,3,0].forEach(l=>{
+    const rs=rules.filter(x=>x.level===l); if(!rs.length)return;
+    const P=PRIO[l];
+    const sec=el(`<div>
+      <div class="flex items-baseline gap-2">
+        <h3 class="font-bold text-lg text-${P.c}-700">${P.e} ${P.label}</h3>
+        <span class="text-xs text-slate-400">${rs.length} quy tắc</span>
+      </div>
+      <p class="text-xs text-slate-500 mb-3 mt-0.5">${P.desc}</p>
+      <div class="space-y-2.5"></div></div>`);
+    const list=sec.querySelector('.space-y-2\\.5');
+    rs.forEach(x=>{
+      const when=WHEN[x.id]||x.name;
+      const chans=(x.channels||[]).map(c=>CH_LABEL[c]||c).join(' & ');
+      const who=(x.recipients||[]).map(c=>RC_LABEL[c]||c).join(', ');
+      const action=`Gửi cảnh báo vào ${chans||'kênh liên quan'}${who?`, nhắc ${who}`:''}.`;
+      list.appendChild(el(`<div class="bg-white border-l-4 border-${P.c}-400 border rounded-xl p-4 shadow-sm hover:shadow transition">
+        <div class="font-semibold text-sm text-slate-800 leading-snug mb-2">${esc(x.name)}</div>
+        <div class="grid sm:grid-cols-2 gap-x-6 gap-y-1.5 text-xs">
+          <div><span class="text-slate-400 font-medium">Khi nào: </span><span class="text-slate-600">${esc(when)}</span></div>
+          <div><span class="text-slate-400 font-medium">Agent làm gì: </span><span class="text-slate-600">${esc(action)}</span></div>
+        </div>
+      </div>`));
+    });
     wrap.appendChild(sec);
   });
   setView(wrap);
