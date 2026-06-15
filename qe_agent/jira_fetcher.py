@@ -13,7 +13,10 @@ import urllib3
 from datetime import date, datetime
 from typing import Optional
 import requests
-from .models import Ticket, STATUS_BLOCKED
+try:
+    from .models import Ticket, STATUS_BLOCKED
+except ImportError:  # flat execution (Docker /app)
+    from models import Ticket, STATUS_BLOCKED
 
 # Load .env từ thư mục cha (project root)
 _env_file = os.path.join(os.path.dirname(__file__), "..", ".env")
@@ -143,7 +146,10 @@ def fetch_by_sprint(sprint: str | None = None, team: str | None = None) -> list[
     jql = f"{clause} AND issuetype in (Story, Task, Bug) ORDER BY created DESC"
     tickets = _search(jql)
     if team:
-        from .models import ticket_in_team_sprint
+        try:
+            from .models import ticket_in_team_sprint
+        except ImportError:
+            from models import ticket_in_team_sprint
         tickets = [t for t in tickets if ticket_in_team_sprint(t.sprints, team)]
     return tickets
 
@@ -216,7 +222,10 @@ def fetch_active_sprint(project_key: str, team: str | None = None) -> list[Ticke
            f"ORDER BY created DESC")
     tickets = _search(jql)
     if team:
-        from .models import ticket_in_team_sprint
+        try:
+            from .models import ticket_in_team_sprint
+        except ImportError:
+            from models import ticket_in_team_sprint
         tickets = [t for t in tickets if ticket_in_team_sprint(t.sprints, team)]
     return tickets
 

@@ -9,10 +9,16 @@ from collections import defaultdict
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
-from .models import (
-    DailyReport, Ticket, RuleResult,
-    CH_QE, CH_DEV_MS, CH_DEV_CRM, dev_channels_for,
-)
+try:
+    from .models import (
+        DailyReport, Ticket, RuleResult,
+        CH_QE, CH_DEV_MS, CH_DEV_CRM, dev_channels_for,
+    )
+except ImportError:  # flat execution (Docker /app)
+    from models import (
+        DailyReport, Ticket, RuleResult,
+        CH_QE, CH_DEV_MS, CH_DEV_CRM, dev_channels_for,
+    )
 
 # Load .env từ thư mục cha (project root)
 _env_file = os.path.join(os.path.dirname(__file__), "..", ".env")

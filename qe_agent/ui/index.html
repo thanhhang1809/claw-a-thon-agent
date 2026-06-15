@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>QA Watchdog — ZaloPay</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<style>
+  :root { --zp:#0068ff; }
+  body{font-family:'Inter',system-ui,-apple-system,sans-serif;}
+  .scroll::-webkit-scrollbar{width:8px;height:8px}
+  .scroll::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:8px}
+  .prose-chat p{margin:.4rem 0} .prose-chat ul{margin:.4rem 0;padding-left:1.2rem;list-style:disc}
+  .prose-chat ol{margin:.4rem 0;padding-left:1.2rem;list-style:decimal}
+  .prose-chat h1,.prose-chat h2,.prose-chat h3{font-weight:700;margin:.6rem 0 .3rem}
+  .prose-chat code{background:#eef2ff;padding:1px 5px;border-radius:4px;font-size:.85em}
+  .prose-chat table{border-collapse:collapse;margin:.5rem 0;font-size:.85em}
+  .prose-chat th,.prose-chat td{border:1px solid #e2e8f0;padding:4px 8px}
+  .prose-chat th{background:#f1f5f9}
+  .typing span{animation:blink 1.2s infinite}.typing span:nth-child(2){animation-delay:.2s}.typing span:nth-child(3){animation-delay:.4s}
+  @keyframes blink{0%,100%{opacity:.2}50%{opacity:1}}
+  .fadein{animation:fi .25s ease}@keyframes fi{from{opacity:0;transform:translateY(4px)}to{opacity:1}}
+</style>
+</head>
+<body class="bg-slate-100 text-slate-800 h-screen overflow-hidden">
+
+<div class="flex h-full">
+  <!-- Sidebar -->
+  <aside class="w-60 bg-slate-900 text-slate-300 flex flex-col shrink-0">
+    <div class="px-5 py-4 flex items-center gap-2 border-b border-slate-800">
+      <div class="w-9 h-9 rounded-xl bg-[var(--zp)] flex items-center justify-center text-white text-lg font-bold">🐶</div>
+      <div><div class="text-white font-semibold leading-tight">QA Watchdog</div>
+      <div class="text-[11px] text-slate-400">ZaloPay · GreenNode</div></div>
+    </div>
+    <nav id="nav" class="flex-1 py-3 space-y-1 px-2 text-sm"></nav>
+    <div class="px-4 py-3 border-t border-slate-800 text-[11px] text-slate-500">
+      Powered by minimax-m2.5 · deepseek-reasoner
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="flex-1 flex flex-col min-w-0">
+    <!-- Topbar: global data source -->
+    <header class="bg-white border-b px-6 py-3 flex items-center gap-4 shrink-0">
+      <h1 id="viewTitle" class="text-lg font-semibold flex-1">Chat</h1>
+      <div class="flex items-center gap-3 text-sm">
+        <span class="text-slate-500">Nguồn dữ liệu:</span>
+        <select id="sourceSel" class="border rounded-lg px-2 py-1.5 bg-slate-50">
+          <option value="snapshot">📄 Snapshot</option>
+          <option value="live">🌐 Live Jira</option>
+        </select>
+        <select id="snapSel" class="border rounded-lg px-2 py-1.5 bg-slate-50 max-w-[220px]"></select>
+      </div>
+    </header>
+
+    <div id="views" class="flex-1 min-h-0 overflow-hidden"></div>
+  </main>
+</div>
+
+<script>
+const API = (p,opt)=>fetch(p,opt).then(async r=>{const t=await r.text();try{return JSON.parse(t)}catch{return t}});
+const el = (h)=>{const d=document.createElement('div');d.innerHTML=h.trim();return d.firstChild};
+const esc = (s)=>(s??'').toString().replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const fmtTime = (s)=>s? new Date(s).toLocaleString('vi-VN',{hour12:false}) : '—';
+const todayStr = ()=>new Date().toISOString().slice(0,10);
+const clampDate = (d)=>{const t=todayStr();return (d && d>t)? t : d;};  // no future scan dates
+const LEVELS = {
+  0:{n:'Data hygiene',e:'⚪',c:'slate'}, 1:{n:'Violent',e:'🔴',c:'red'},
+  2:{n:'Risk',e:'🟠',c:'orange'}, 3:{n:'Watch',e:'🟡',c:'yellow'}};
+const STATUS = {pass:{t:'Pass',c:'emerald'},warn:{t:'Warn',c:'amber'},fail:{t:'Fail',c:'red'},running:{t:'Running',c:'sky'}};
+
+let SRC = {source:'snapshot', snapshot_file:null};
+const NAV = [
+  {id:'chat',  ic:'💬', t:'Chat'},
+  {id:'scan',  ic:'🔍', t:'Scan & Vi phạm'},
+  {id:'rules', ic:'📐', t:'Rules'},
+  {id:'report',ic:'📧', t:'Report → Teams'},
+  {id:'sched', ic:'⏰', t:'Lịch chạy'},
+  {id:'history',ic:'🗂️', t:'Lịch sử'},
+  {id:'insights',ic:'📈', t:'Insights'},
+];
+let activeView='chat';
+
+// ---------------- bootstrap ----------------
+async function boot(){
+  const nav=document.getElementById('nav');
+  NAV.forEach(n=>{
+    const b=el(`<button data-v="${n.id}" class="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-800 transition text-left">
+      <span>${n.ic}</span><span>${n.t}</span></button>`);
+    b.onclick=()=>switchView(n.id);
+    nav.appendChild(b);
+  });
+  // data source
+  const snaps = await API('/api/snapshots');
+  const ss=document.getElementById('snapSel');
+  (snaps.snapshots||[]).forEach(s=>ss.appendChild(el(`<option value="${s.file}">${s.file} (${s.count})</option>`)));
+  SRC.snapshot_file = ss.value;
+  ss.onchange=()=>{SRC.snapshot_file=ss.value;};
+  document.getElementById('sourceSel').onchange=(e)=>{
+    SRC.source=e.target.value; ss.style.display = SRC.source==='live'?'none':'';
+  };
+  switchView('chat');
+}
+
+function switchView(id){
+  activeView=id;
+  document.querySelectorAll('#nav button').forEach(b=>
+    b.classList.toggle('bg-[var(--zp)]', b.dataset.v===id));
+  document.querySelectorAll('#nav button').forEach(b=>
+    b.classList.toggle('text-white', b.dataset.v===id));
+  document.getElementById('viewTitle').textContent = NAV.find(n=>n.id===id).t;
+  VIEWS[id]();
+}
+function setView(html){const v=document.getElementById('views');v.innerHTML='';v.appendChild(typeof html==='string'?el(`<div>${html}</div>`):html);}
+function badge(c,t){return `<span class="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-${c}-100 text-${c}-700">${t}</span>`}
+
+// ================= CHAT =================
+let chatHistory=[];
+const VIEWS={};
+VIEWS.chat=()=>{
+  const wrap=el(`<div class="h-full flex flex-col">
+    <div id="msgs" class="flex-1 overflow-y-auto scroll px-6 py-5 space-y-4"></div>
+    <div class="border-t bg-white px-6 py-3">
+      <div class="flex gap-2 max-w-3xl mx-auto">
+        <input id="chatIn" placeholder="Hỏi về trạng thái QA, vi phạm, hoặc yêu cầu sinh test checklist…"
+          class="flex-1 border rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-[var(--zp)] outline-none"/>
+        <button id="chatSend" class="bg-[var(--zp)] text-white px-5 rounded-xl font-medium hover:opacity-90">Gửi</button>
+      </div>
+      <div class="max-w-3xl mx-auto mt-2 flex flex-wrap gap-2 text-xs">
+        ${['Phân tích vi phạm QA sprint hiện tại','Ticket nào đang vi phạm Level 1?','Sinh test checklist ISTQB cho 1 ticket'].map(q=>
+        `<button class="chip px-3 py-1 rounded-full bg-slate-100 hover:bg-slate-200">${q}</button>`).join('')}
+      </div>
+    </div></div>`);
+  setView(wrap);
+  const msgs=wrap.querySelector('#msgs');
+  if(!chatHistory.length){
+    msgs.appendChild(el(`<div class="text-center text-slate-400 mt-10">
+      <div class="text-5xl mb-3">🐶</div><div class="font-medium">QA Watchdog Agent</div>
+      <div class="text-sm">Hỏi bất cứ điều gì về quy trình QA của team.</div></div>`));
+  } else chatHistory.forEach(m=>msgs.appendChild(bubble(m.role,m.text)));
+  const input=wrap.querySelector('#chatIn'), send=wrap.querySelector('#chatSend');
+  wrap.querySelectorAll('.chip').forEach(c=>c.onclick=()=>{input.value=c.textContent;send.click();});
+  const go=async()=>{
+    const q=input.value.trim(); if(!q)return;
+    if(!chatHistory.length) msgs.innerHTML='';
+    input.value='';
+    chatHistory.push({role:'user',text:q}); msgs.appendChild(bubble('user',q));
+    const t=el(`<div class="flex"><div class="typing bg-white border rounded-2xl px-4 py-3 text-slate-400"><span>●</span><span>●</span><span>●</span></div></div>`);
+    msgs.appendChild(t); msgs.scrollTop=msgs.scrollHeight;
+    try{
+      const r=await API('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({message:q, ...SRC})});
+      t.remove();
+      const txt=r.reply||r.error||'(không có phản hồi)';
+      chatHistory.push({role:'bot',text:txt}); msgs.appendChild(bubble('bot',txt));
+    }catch(e){t.remove();msgs.appendChild(bubble('bot','Lỗi: '+e));}
+    msgs.scrollTop=msgs.scrollHeight;
+  };
+  send.onclick=go; input.onkeydown=e=>{if(e.key==='Enter')go();};
+  input.focus();
+};
+function bubble(role,text){
+  if(role==='user')return el(`<div class="flex justify-end fadein"><div class="bg-[var(--zp)] text-white rounded-2xl rounded-br-sm px-4 py-2.5 max-w-[80%] whitespace-pre-wrap">${esc(text)}</div></div>`);
+  return el(`<div class="flex gap-2 fadein"><div class="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center shrink-0">🐶</div>
+    <div class="prose-chat bg-white border rounded-2xl rounded-tl-sm px-4 py-3 max-w-[80%]">${marked.parse(text||'')}</div></div>`);
+}
+
+// ================= SCAN =================
+VIEWS.scan=()=>{
+  const today=new Date().toISOString().slice(0,10);
+  const wrap=el(`<div class="h-full overflow-y-auto scroll p-6">
+    <div class="flex items-end gap-3 mb-5 flex-wrap">
+      <div><label class="text-xs text-slate-500">Ngày scan</label>
+        <input id="scanDate" type="date" value="${today}" max="${today}" class="block border rounded-lg px-3 py-2"/></div>
+      <button id="runScan" class="bg-[var(--zp)] text-white px-5 py-2 rounded-lg font-medium hover:opacity-90">🔍 Chạy scan</button>
+      <div id="scanMeta" class="text-sm text-slate-500"></div>
+    </div>
+    <div id="scanCards" class="grid grid-cols-4 gap-3 mb-6"></div>
+    <div id="scanOut" class="space-y-5"></div>
+  </div>`);
+  setView(wrap);
+  wrap.querySelector('#runScan').onclick=async()=>{
+    const out=wrap.querySelector('#scanOut'), cards=wrap.querySelector('#scanCards');
+    const meta=wrap.querySelector('#scanMeta');
+    out.innerHTML='<div class="text-slate-400">Đang chạy rule engine…</div>'; cards.innerHTML='';
+    const r=await API('/api/scan',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({...SRC, scan_date:clampDate(wrap.querySelector('#scanDate').value)})});
+    if(r.error){out.innerHTML=`<div class="text-red-600">Lỗi: ${esc(r.error)}</div>`;return;}
+    meta.innerHTML=`${r.ticket_count} tickets · ${badge(STATUS[r.status].c,STATUS[r.status].t)} · task #${r.task_id}`;
+    cards.innerHTML='';
+    [1,2,3,0].forEach(l=>{const L=LEVELS[l];const n=r.counts[l]||0;
+      cards.appendChild(el(`<div class="bg-white border rounded-xl p-4 ${n?'':'opacity-50'}">
+        <div class="text-2xl font-bold">${n}</div>
+        <div class="text-sm text-slate-500">${L.e} ${L.n}</div></div>`));});
+    out.innerHTML='';
+    let any=false;
+    [1,2,3,0].forEach(l=>{
+      const vs=r.by_level[l]||[]; if(!vs.length)return; any=true;
+      const L=LEVELS[l];
+      const sec=el(`<div class="bg-white border rounded-xl overflow-hidden">
+        <div class="px-4 py-2.5 font-semibold bg-${L.c}-50 text-${L.c}-800 border-b">${L.e} ${L.n} — ${vs.length}</div>
+        <div class="divide-y"></div></div>`);
+      const body=sec.querySelector('div.divide-y');
+      vs.forEach(v=>body.appendChild(el(`<div class="px-4 py-2.5 text-sm flex gap-3">
+        <div class="font-mono text-[var(--zp)] shrink-0 w-28">${esc(v.ticket)}</div>
+        <div class="flex-1"><div>${esc(v.msg)}</div>
+        <div class="text-xs text-slate-400 mt-0.5">${esc(v.rule)}${v.qe_pic?' · QE: '+esc(v.qe_pic):''}${v.assignee?' · '+esc(v.assignee):''}</div></div></div>`)));
+      out.appendChild(sec);
+    });
+    if(!any)out.innerHTML='<div class="text-center text-emerald-600 py-10 text-lg">🎉 Không có vi phạm!</div>';
+  };
+};
+
+// ================= RULES =================
+VIEWS.rules=async()=>{
+  setView('<div class="p-6 text-slate-400">Đang tải rules…</div>');
+  const r=await API('/api/rules');
+  const wrap=el('<div class="h-full overflow-y-auto scroll p-6 space-y-6"></div>');
+  [0,1,2,3].forEach(l=>{
+    const rs=(r.rules||[]).filter(x=>x.level===l); if(!rs.length)return;
+    const L=LEVELS[l];
+    const sec=el(`<div><h3 class="font-semibold mb-2 text-${L.c}-700">${L.e} ${L.n} — ${rs.length} rule</h3>
+      <div class="grid grid-cols-2 gap-3"></div></div>`);
+    const g=sec.querySelector('.grid');
+    rs.forEach(x=>g.appendChild(el(`<div class="bg-white border rounded-xl p-4">
+      <div class="flex items-center gap-2 mb-1"><span class="font-mono text-xs bg-slate-100 px-2 py-0.5 rounded">${esc(x.id)}</span>
+        <span class="text-[10px] uppercase tracking-wide text-slate-400">${esc(x.type)}</span></div>
+      <div class="font-medium text-sm">${esc(x.name)}</div>
+      <div class="text-xs text-slate-500 mt-1 font-mono bg-slate-50 rounded p-2 break-words">${esc(x.condition)}</div>
+      <div class="text-xs mt-2 flex flex-wrap gap-1">${x.channels.map(c=>badge('sky',c)).join('')}${x.recipients.map(c=>badge('violet',c)).join('')}</div>
+    </div>`)));
+    wrap.appendChild(sec);
+  });
+  setView(wrap);
+};
+
+// ================= REPORT =================
+VIEWS.report=()=>{
+  const today=new Date().toISOString().slice(0,10);
+  const wrap=el(`<div class="h-full flex flex-col p-6">
+    <div class="flex items-end gap-3 mb-4 flex-wrap">
+      <div><label class="text-xs text-slate-500">Ngày report</label>
+        <input id="rDate" type="date" value="${today}" max="${today}" class="block border rounded-lg px-3 py-2"/></div>
+      <button id="rPrev" class="bg-slate-700 text-white px-4 py-2 rounded-lg hover:opacity-90">👁 Preview</button>
+      <button id="rSend" class="bg-[var(--zp)] text-white px-4 py-2 rounded-lg font-medium hover:opacity-90">📧 Gửi tới Teams</button>
+      <div id="rMsg" class="text-sm"></div>
+    </div>
+    <div class="flex-1 border rounded-xl bg-white overflow-hidden">
+      <iframe id="rFrame" class="w-full h-full" style="border:0"></iframe></div>
+  </div>`);
+  setView(wrap);
+  const frame=wrap.querySelector('iframe'), msg=wrap.querySelector('#rMsg');
+  const body=()=>JSON.stringify({...SRC, scan_date:clampDate(wrap.querySelector('#rDate').value)});
+  wrap.querySelector('#rPrev').onclick=async()=>{
+    msg.innerHTML='<span class="text-slate-400">Đang render…</span>';
+    const html=await API('/api/report/preview',{method:'POST',headers:{'Content-Type':'application/json'},body:body()});
+    frame.srcdoc=typeof html==='string'?html:(html.error||'');msg.innerHTML='';
+  };
+  wrap.querySelector('#rSend').onclick=async()=>{
+    if(!confirm('Gửi report QA thật tới các channel Teams?'))return;
+    msg.innerHTML='<span class="text-slate-400">Đang gửi…</span>';
+    const r=await API('/api/report/send',{method:'POST',headers:{'Content-Type':'application/json'},body:body()});
+    if(r.error){msg.innerHTML=`<span class="text-red-600">Lỗi: ${esc(r.error)}</span>`;return;}
+    msg.innerHTML=`${badge(STATUS[r.status].c,STATUS[r.status].t)} <span class="ml-1">${esc(r.summary)}</span>`;
+    if(r.html)frame.srcdoc=r.html;
+  };
+};
+
+// ================= SCHEDULE =================
+VIEWS.sched=async()=>{
+  setView('<div class="p-6 text-slate-400">Đang tải…</div>');
+  const data=await API('/api/schedules');
+  const wrap=el(`<div class="h-full overflow-y-auto scroll p-6">
+    <div class="bg-white border rounded-xl p-4 mb-6 max-w-3xl">
+      <h3 class="font-semibold mb-3">➕ Tạo lịch chạy mới</h3>
+      <div class="grid grid-cols-2 gap-3 text-sm">
+        <label class="block">Tên<input id="sName" value="Daily QA scan" class="w-full border rounded-lg px-3 py-2 mt-1"/></label>
+        <label class="block">Hành động<select id="sAct" class="w-full border rounded-lg px-3 py-2 mt-1">
+          <option value="scan">Scan vi phạm</option><option value="send">Gửi report Teams</option></select></label>
+        <label class="block">Giờ<input id="sH" type="number" min="0" max="23" value="9" class="w-full border rounded-lg px-3 py-2 mt-1"/></label>
+        <label class="block">Phút<input id="sM" type="number" min="0" max="59" value="0" class="w-full border rounded-lg px-3 py-2 mt-1"/></label>
+        <label class="block">Nguồn dữ liệu<select id="sSource" class="w-full border rounded-lg px-3 py-2 mt-1">
+          <option value="snapshot">📄 Snapshot</option><option value="live">🌐 Live Jira</option></select></label>
+        <label class="block">Snapshot file<select id="sSnap" class="w-full border rounded-lg px-3 py-2 mt-1"></select></label>
+        <label class="block col-span-2">Ngày trong tuần
+          <input id="sD" value="mon-fri" class="w-full border rounded-lg px-3 py-2 mt-1"/>
+          <span class="text-xs text-slate-400">vd: mon-fri, mon,wed,fri, *</span></label>
+      </div>
+      <button id="sAdd" class="mt-3 bg-[var(--zp)] text-white px-4 py-2 rounded-lg font-medium">Tạo lịch</button>
+      <span id="sNote" class="text-xs text-slate-400 ml-2">TZ Asia/Ho_Chi_Minh</span>
+    </div>
+    <div id="sList" class="space-y-2"></div></div>`);
+  setView(wrap);
+  // schedule has its OWN data-source picker (not the global toggle) so a
+  // "send" job never silently captures Live Jira and fails at fire time.
+  const snaps=await API('/api/snapshots');
+  const sSnap=wrap.querySelector('#sSnap');
+  (snaps.snapshots||[]).forEach(s=>sSnap.appendChild(el(`<option value="${s.file}">${s.file} (${s.count})</option>`)));
+  const sSource=wrap.querySelector('#sSource'), sNote=wrap.querySelector('#sNote');
+  const syncSrc=()=>{
+    const live=sSource.value==='live';
+    sSnap.disabled=live; sSnap.style.opacity=live?.5:1;
+    sNote.innerHTML = live
+      ? '⚠️ Live Jira cần JIRA_BASE_URL/JIRA_PAT hợp lệ trong runtime — nếu thiếu, job sẽ fail. Khuyến nghị Snapshot. · TZ Asia/Ho_Chi_Minh'
+      : 'TZ Asia/Ho_Chi_Minh';
+  };
+  sSource.onchange=syncSrc; syncSrc();
+  const render=(list)=>{
+    const c=wrap.querySelector('#sList');c.innerHTML='';
+    if(!list.length){c.innerHTML='<div class="text-slate-400">Chưa có lịch nào.</div>';return;}
+    list.forEach(s=>{
+      const row=el(`<div class="bg-white border rounded-xl p-4 flex items-center gap-4 ${s.enabled?'':'opacity-50'}">
+        <div class="text-2xl">${s.action==='send'?'📧':'🔍'}</div>
+        <div class="flex-1"><div class="font-medium">${esc(s.name)} ${badge(s.enabled?'emerald':'slate',s.enabled?'ON':'OFF')}</div>
+          <div class="text-sm text-slate-500">${String(s.hour).padStart(2,'0')}:${String(s.minute).padStart(2,'0')} · ${esc(s.days)} · ${esc(s.source)}${s.snapshot_file?' · '+esc(s.snapshot_file):''}</div>
+          <div class="text-xs text-slate-400">Chạy gần nhất: ${fmtTime(s.last_run)} ${s.last_status?'· '+s.last_status:''}</div></div>
+        <button data-a="run" class="text-sm px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200">▶ Chạy ngay</button>
+        <button data-a="toggle" class="text-sm px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200">${s.enabled?'Tắt':'Bật'}</button>
+        <button data-a="del" class="text-sm px-3 py-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100">Xoá</button>
+      </div>`);
+      row.querySelector('[data-a=run]').onclick=async()=>{await API(`/api/schedules/${s.id}/run`,{method:'POST'});VIEWS.sched();};
+      row.querySelector('[data-a=toggle]').onclick=async()=>{await API(`/api/schedules/${s.id}/toggle`,{method:'POST'});VIEWS.sched();};
+      row.querySelector('[data-a=del]').onclick=async()=>{if(confirm('Xoá lịch này?')){await API(`/api/schedules/${s.id}`,{method:'DELETE'});VIEWS.sched();}};
+      c.appendChild(row);
+    });
+  };
+  render(data.schedules||[]);
+  wrap.querySelector('#sAdd').onclick=async()=>{
+    const src=sSource.value;
+    await API('/api/schedules',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      name:wrap.querySelector('#sName').value, action:wrap.querySelector('#sAct').value,
+      hour:+wrap.querySelector('#sH').value, minute:+wrap.querySelector('#sM').value,
+      days:wrap.querySelector('#sD').value,
+      source:src, snapshot_file: src==='live'? null : sSnap.value})});
+    VIEWS.sched();
+  };
+};
+
+// ================= HISTORY =================
+VIEWS.history=async()=>{
+  setView('<div class="p-6 text-slate-400">Đang tải…</div>');
+  const [st,h]=await Promise.all([API('/api/stats'),API('/api/history?limit=200')]);
+  const wrap=el(`<div class="h-full overflow-y-auto scroll p-6">
+    <div class="grid grid-cols-4 gap-3 mb-5">
+      ${[['total','Tổng','slate'],['pass','Pass','emerald'],['warn','Warn','amber'],['fail','Fail','red']].map(([k,t,c])=>
+      `<div class="bg-white border rounded-xl p-4"><div class="text-2xl font-bold text-${c}-600">${st[k]||0}</div><div class="text-sm text-slate-500">${t}</div></div>`).join('')}
+    </div>
+    <div class="bg-white border rounded-xl overflow-hidden">
+      <table class="w-full text-sm"><thead class="bg-slate-50 text-slate-500 text-left">
+        <tr><th class="px-4 py-2">#</th><th class="px-4 py-2">Loại</th><th class="px-4 py-2">Trạng thái</th>
+        <th class="px-4 py-2">Tóm tắt</th><th class="px-4 py-2">Thời gian</th></tr></thead>
+        <tbody id="hBody" class="divide-y"></tbody></table></div>
+    <div id="hDetail" class="mt-4"></div></div>`);
+  setView(wrap);
+  const tb=wrap.querySelector('#hBody');
+  (h.tasks||[]).forEach(t=>{
+    const S=STATUS[t.status]||{t:t.status,c:'slate'};
+    const tr=el(`<tr class="hover:bg-slate-50 cursor-pointer">
+      <td class="px-4 py-2 text-slate-400">${t.id}</td>
+      <td class="px-4 py-2"><span class="font-mono text-xs">${esc(t.type)}</span></td>
+      <td class="px-4 py-2">${badge(S.c,S.t)}</td>
+      <td class="px-4 py-2">${esc(t.summary||'')}</td>
+      <td class="px-4 py-2 text-slate-400 whitespace-nowrap">${fmtTime(t.finished_at||t.created_at)}</td></tr>`);
+    tr.onclick=async()=>{
+      const d=await API(`/api/history/${t.id}`);
+      wrap.querySelector('#hDetail').innerHTML=`<div class="bg-slate-900 text-slate-100 rounded-xl p-4 text-xs overflow-x-auto"><pre>${esc(JSON.stringify(d.detail||d,null,2))}</pre></div>`;
+      wrap.querySelector('#hDetail').scrollIntoView({behavior:'smooth'});
+    };
+    tb.appendChild(tr);
+  });
+  if(!(h.tasks||[]).length)tb.appendChild(el('<tr><td colspan="5" class="px-4 py-6 text-center text-slate-400">Chưa có task nào.</td></tr>'));
+};
+
+// ================= INSIGHTS =================
+VIEWS.insights=()=>{
+  const wrap=el(`<div class="h-full overflow-y-auto scroll p-6">
+    <div class="flex gap-2 mb-4 max-w-3xl">
+      <input id="iQ" placeholder="Câu hỏi tuỳ chọn (để trống = phân tích tổng quan trends/risks/cải thiện)"
+        class="flex-1 border rounded-xl px-4 py-2.5"/>
+      <button id="iGo" class="bg-[var(--zp)] text-white px-5 rounded-xl font-medium">📈 Phân tích</button>
+    </div>
+    <div id="iOut" class="grid grid-cols-3 gap-5">
+      <div class="col-span-2 prose-chat bg-white border rounded-xl p-5 min-h-[200px]" id="iText">
+        <div class="text-slate-400">Nhấn "Phân tích" để agent đọc lịch sử vi phạm và đưa ra insight.</div></div>
+      <div id="iData" class="space-y-3"></div>
+    </div></div>`);
+  setView(wrap);
+  wrap.querySelector('#iGo').onclick=async()=>{
+    const txt=wrap.querySelector('#iText'); txt.innerHTML='<div class="typing text-slate-400"><span>●</span><span>●</span><span>●</span></div>';
+    const r=await API('/api/insights',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({question:wrap.querySelector('#iQ').value||null})});
+    if(r.error){txt.innerHTML=`<span class="text-red-600">Lỗi: ${esc(r.error)}</span>`;return;}
+    txt.innerHTML=marked.parse(r.insights||'(trống)');
+    const d=r.data||{}, side=wrap.querySelector('#iData');side.innerHTML='';
+    const card=(title,rows)=>{const c=el(`<div class="bg-white border rounded-xl p-4"><div class="font-semibold text-sm mb-2">${title}</div><div class="space-y-1 text-sm"></div></div>`);
+      const b=c.querySelector('div.space-y-1');
+      rows.forEach(([k,v])=>b.appendChild(el(`<div class="flex justify-between"><span class="text-slate-600 truncate">${esc(k)}</span><span class="font-semibold">${v}</span></div>`)));
+      if(!rows.length)b.innerHTML='<div class="text-slate-400">—</div>';return c;};
+    side.appendChild(card(`📊 Tổng quan`,[['Vi phạm',d.total_violations||0],['Lần scan',d.total_scans||0]]));
+    side.appendChild(card('🔝 Top rule',(d.by_rule||[]).slice(0,6).map(x=>[x.rule_id,x.n])));
+    side.appendChild(card('🔁 Repeat offenders',(d.repeat_offenders||[]).slice(0,6).map(x=>[x.ticket_key,x.days+'d'])));
+    side.appendChild(card('👤 Top QE PIC',(d.by_qe_pic||[]).slice(0,6).map(x=>[x.qe_pic,x.n])));
+  };
+};
+
+boot();
+</script>
+</body>
+</html>
