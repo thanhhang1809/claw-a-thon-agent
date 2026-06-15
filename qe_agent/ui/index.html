@@ -275,17 +275,20 @@ VIEWS.sched=async()=>{
     <div class="bg-white border rounded-xl p-4 mb-6 max-w-3xl">
       <h3 class="font-semibold mb-3">➕ Tạo lịch chạy mới</h3>
       <div class="grid grid-cols-2 gap-3 text-sm">
-        <label class="block">Tên<input id="sName" value="Daily QA scan" class="w-full border rounded-lg px-3 py-2 mt-1"/></label>
+        <label class="block">Tên<input id="sName" value="Daily report Teams" class="w-full border rounded-lg px-3 py-2 mt-1"/></label>
         <label class="block">Hành động<select id="sAct" class="w-full border rounded-lg px-3 py-2 mt-1">
-          <option value="scan">Scan vi phạm</option><option value="send">Gửi report Teams</option></select></label>
+          <option value="send">Gửi report Teams</option></select></label>
         <label class="block">Giờ<input id="sH" type="number" min="0" max="23" value="9" class="w-full border rounded-lg px-3 py-2 mt-1"/></label>
         <label class="block">Phút<input id="sM" type="number" min="0" max="59" value="0" class="w-full border rounded-lg px-3 py-2 mt-1"/></label>
         <label class="block">Nguồn dữ liệu<select id="sSource" class="w-full border rounded-lg px-3 py-2 mt-1">
           <option value="snapshot">📄 Snapshot</option><option value="live">🌐 Live Jira</option></select></label>
         <label class="block">Snapshot file<select id="sSnap" class="w-full border rounded-lg px-3 py-2 mt-1"></select></label>
-        <label class="block col-span-2">Ngày trong tuần
-          <input id="sD" value="mon-fri" class="w-full border rounded-lg px-3 py-2 mt-1"/>
-          <span class="text-xs text-slate-400">vd: mon-fri, mon,wed,fri, *</span></label>
+        <div class="block col-span-2">Ngày trong tuần
+          <div id="sDays" class="flex flex-wrap gap-1.5 mt-1">
+            ${[['mon','T2'],['tue','T3'],['wed','T4'],['thu','T5'],['fri','T6'],['sat','T7'],['sun','CN']].map(([v,l])=>
+              `<button type="button" data-day="${v}" class="dayb px-3.5 py-1.5 rounded-lg border text-sm font-medium select-none">${l}</button>`).join('')}
+          </div>
+          <span class="text-xs text-slate-400">Bấm để chọn / bỏ chọn từng ngày</span></div>
       </div>
       <button id="sAdd" class="mt-3 bg-[var(--zp)] text-white px-4 py-2 rounded-lg font-medium">Tạo lịch</button>
       <span id="sNote" class="text-xs text-slate-400 ml-2">TZ Asia/Ho_Chi_Minh</span>
@@ -306,6 +309,19 @@ VIEWS.sched=async()=>{
       : 'TZ Asia/Ho_Chi_Minh';
   };
   sSource.onchange=syncSrc; syncSrc();
+  // day-of-week toggles (default Mon–Fri selected)
+  const dayBtns=[...wrap.querySelectorAll('.dayb')];
+  const setDay=(b,on)=>{
+    b.dataset.on = on ? '1' : '';
+    b.classList.toggle('bg-[var(--zp)]', on);
+    b.classList.toggle('text-white', on);
+    b.classList.toggle('border-[var(--zp)]', on);
+    b.classList.toggle('text-slate-500', !on);
+  };
+  dayBtns.forEach(b=>{
+    setDay(b, ['mon','tue','wed','thu','fri'].includes(b.dataset.day));
+    b.onclick=()=>setDay(b, b.dataset.on!=='1');
+  });
   const render=(list)=>{
     const c=wrap.querySelector('#sList');c.innerHTML='';
     if(!list.length){c.innerHTML='<div class="text-slate-400">Chưa có lịch nào.</div>';return;}
@@ -328,10 +344,12 @@ VIEWS.sched=async()=>{
   render(data.schedules||[]);
   wrap.querySelector('#sAdd').onclick=async()=>{
     const src=sSource.value;
+    const days=dayBtns.filter(b=>b.dataset.on==='1').map(b=>b.dataset.day).join(',');
+    if(!days){alert('Chọn ít nhất 1 ngày trong tuần');return;}
     await API('/api/schedules',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
       name:wrap.querySelector('#sName').value, action:wrap.querySelector('#sAct').value,
       hour:+wrap.querySelector('#sH').value, minute:+wrap.querySelector('#sM').value,
-      days:wrap.querySelector('#sD').value,
+      days,
       source:src, snapshot_file: src==='live'? null : sSnap.value})});
     VIEWS.sched();
   };

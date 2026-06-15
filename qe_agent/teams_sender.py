@@ -182,11 +182,18 @@ def _rule_table(group: dict) -> str:
     )
 
 
-def _build_html(channel_title: str, date_str: str, groups: list[dict]) -> str:
+def _build_html(channel_title: str, date_str: str, groups: list[dict],
+                page: int = None, total_pages: int = None) -> str:
     # gom group theo level để in header level
     by_level: dict[int, list] = defaultdict(list)
     for g in groups:
         by_level[g["level"]].append(g)
+
+    part_badge = ""
+    if total_pages and total_pages > 1:
+        part_badge = (f'<span style="background:rgba(255,255,255,.25);border-radius:10px;'
+                      f'padding:2px 10px;font-size:12px;font-weight:600;margin-left:8px">'
+                      f'Phần {page}/{total_pages}</span>')
 
     body = ""
     for level in sorted(by_level):
@@ -208,7 +215,7 @@ def _build_html(channel_title: str, date_str: str, groups: list[dict]) -> str:
              background:#f5f5f5;margin:0;padding:20px">
 <div style="max-width:760px;margin:0 auto">
   <div style="background:#1565c0;border-radius:10px 10px 0 0;padding:20px 24px;color:#fff">
-    <div style="font-size:18px;font-weight:700">🛡️ QA Watchdog — {channel_title}</div>
+    <div style="font-size:18px;font-weight:700">🛡️ QA Watchdog — {channel_title}{part_badge}</div>
     <div style="font-size:13px;opacity:.85;margin-top:4px">📅 {date_str}</div>
   </div>
   <div style="background:#fff;border-radius:0 0 10px 10px;padding:18px 24px;
@@ -255,6 +262,45 @@ def render_text(report: DailyReport) -> str:
 
 
 # ---------------------------------------------------------------------------
+# pagination — tách 1 channel thành nhiều email khi data quá dài
+# (Gmail clip email > ~102KB; Teams "post via email" cũng giới hạn).
+# Mỗi trang gói tối đa MAX_ROWS dòng; group lớn hơn sẽ bị chia nhỏ.
+# ---------------------------------------------------------------------------
+def _max_rows_per_email() -> int:
+    try:
+        return max(10, int(os.getenv("REPORT_MAX_ROWS_PER_EMAIL", "60")))
+    except ValueError:
+        return 60
+
+
+def _split_group(group: dict, max_rows: int) -> list[dict]:
+    rows = group["rows"]
+    if len(rows) <= max_rows:
+        return [group]
+    return [{**group, "rows": rows[i:i + max_rows]}
+            for i in range(0, len(rows), max_rows)]
+
+
+def _paginate(groups: list[dict], max_rows: int) -> list[list[dict]]:
+    """Pack groups vào các trang, mỗi trang tổng số dòng <= max_rows.
+    Group nào lớn hơn max_rows sẽ tự được chia tách qua nhiều trang."""
+    pages: list[list[dict]] = []
+    cur: list[dict] = []
+    cur_rows = 0
+    for g in groups:
+        for sub in _split_group(g, max_rows):
+            n = len(sub["rows"])
+            if cur and cur_rows + n > max_rows:
+                pages.append(cur)
+                cur, cur_rows = [], 0
+            cur.append(sub)
+            cur_rows += n
+    if cur:
+        pages.append(cur)
+    return pages or [[]]
+
+
+# ---------------------------------------------------------------------------
 # send
 # ---------------------------------------------------------------------------
 def _send_one(to: str, subject: str, html: str, from_addr: str, password: str) -> None:
@@ -283,6 +329,8 @@ def send(report: DailyReport, dry_run: bool = False) -> None:
     if not gmail_user or not gmail_pass:
         raise RuntimeError("Thiếu GMAIL_USER / GMAIL_APP_PASSWORD trong .env")
 
+    max_rows = _max_rows_per_email()
+
     for ch, groups in routed.items():
         if not groups:
             continue
@@ -291,10 +339,18 @@ def send(report: DailyReport, dry_run: bool = False) -> None:
             print(f"[skip] {CHANNEL_EMAIL_ENV[ch]} chưa set — bỏ qua {ch}")
             continue
 
-        levels = {g["level"] for g in groups}
-        prefix = "🔴" if 1 in levels else ("🟠" if 2 in levels else "📋")
-        subject = f"{prefix} QA Watchdog {date_str} — {CHANNEL_TITLE[ch]}"
+        # Tách thành nhiều email nếu data quá dài để email client hiển thị đủ
+        pages = _paginate(groups, max_rows)
+        total = len(pages)
 
-        html = _build_html(CHANNEL_TITLE[ch], date_str, groups)
-        _send_one(to_email, subject, html, gmail_user, gmail_pass)
-        print(f"[sent] {subject} → {to_email}")
+        for idx, page_groups in enumerate(pages, 1):
+            levels = {g["level"] for g in page_groups}
+            prefix = "🔴" if 1 in levels else ("🟠" if 2 in levels else "📋")
+            part = f" (Phần {idx}/{total})" if total > 1 else ""
+            subject = f"{prefix} QA Watchdog {date_str} — {CHANNEL_TITLE[ch]}{part}"
+
+            html = _build_html(CHANNEL_TITLE[ch], date_str, page_groups,
+                               page=idx if total > 1 else None,
+                               total_pages=total if total > 1 else None)
+            _send_one(to_email, subject, html, gmail_user, gmail_pass)
+            print(f"[sent] {subject} → {to_email}")
