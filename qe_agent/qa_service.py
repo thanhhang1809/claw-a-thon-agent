@@ -159,8 +159,16 @@ def run_scan(source: str = "snapshot", snapshot_file: Optional[str] = None,
         for v in violations:
             by_level.setdefault(v["level"], []).append(v)
 
-        status = "pass" if not violations else ("fail" if by_level[1] else "warn")
+        # status = KẾT QUẢ THỰC THI (scan chạy xong = pass). Phát hiện vi phạm
+        # KHÔNG phải là "fail" — mức độ vi phạm để riêng ở `severity`.
+        status = "pass"
         counts = {str(k): len(v) for k, v in by_level.items()}
+        if by_level[1]:
+            severity = "critical"
+        elif by_level[2] or by_level[3] or by_level[0]:
+            severity = "warn"
+        else:
+            severity = "clean"
         summary = (f"{len(tickets)} tickets · {len(violations)} vi phạm "
                    f"(L1={counts['1']} L2={counts['2']} L3={counts['3']} L0={counts['0']})")
 
@@ -171,6 +179,7 @@ def run_scan(source: str = "snapshot", snapshot_file: Optional[str] = None,
             "ticket_count": len(tickets),
             "violation_count": len(violations),
             "counts": counts,
+            "severity": severity,
             "by_level": {str(k): v for k, v in by_level.items()},
             "level_meta": {str(k): m for k, m in LEVEL_META.items()},
             "status": status,
@@ -364,10 +373,10 @@ def seed_demo_data() -> bool:
                     scan_date="2026-06-15", dry_run=True)
     except Exception:
         pass
-    # a sample daily schedule
+    # lịch mẫu: GỬI report Teams hằng ngày (để 'Chạy ngay' gửi email thật được)
     try:
-        webstore.add_schedule("Daily QE scan 9h", 9, 0, "mon-fri",
-                              "scan", "snapshot", snap, None)
+        webstore.add_schedule("Daily report QE Teams (9h)", 9, 0, "mon-fri",
+                              "send", "snapshot", snap, None)
     except Exception:
         pass
     return True

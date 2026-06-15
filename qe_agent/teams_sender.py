@@ -301,13 +301,42 @@ def _paginate(groups: list[dict], max_rows: int) -> list[list[dict]]:
 
 
 # ---------------------------------------------------------------------------
+# Plain-text bản song song HTML. Teams "post via email" sanitize HTML bảng rất
+# mạnh (thường strip <table>) → cần text/plain để data luôn hiển thị.
+# ---------------------------------------------------------------------------
+def _build_text(channel_title: str, date_str: str, groups: list[dict]) -> str:
+    by_level: dict[int, list] = defaultdict(list)
+    for g in groups:
+        by_level[g["level"]].append(g)
+    lines = [f"QE WATCHDOG — {channel_title}", f"Ngày: {date_str}", ""]
+    for level in sorted(by_level):
+        total = sum(len(g["rows"]) for g in by_level[level])
+        suffix = "ticket" if level == -1 else "vi phạm"
+        lines.append(f"== {LEVEL_NAME.get(level, '?')} — {total} {suffix} ==")
+        for g in by_level[level]:
+            heading = g["label"] if g["level"] == -1 else g["rule_id"]
+            lines.append(f"[{heading}] ({len(g['rows'])} ticket)")
+            for row in g["rows"]:
+                t = row["ticket"]
+                lines.append(f"  - {t.id} | {t.status or '—'} | "
+                             f"assignee: {t.assignee or '—'} | QE: {t.qe_pic or '—'}")
+                for r in row["reasons"]:
+                    lines.append(f"      • {r}")
+        lines.append("")
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
 # send
 # ---------------------------------------------------------------------------
-def _send_one(to: str, subject: str, html: str, from_addr: str, password: str) -> None:
+def _send_one(to: str, subject: str, text: str, html: str,
+              from_addr: str, password: str) -> None:
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
     msg["From"]    = from_addr
     msg["To"]      = to
+    # thứ tự alternative: text trước, html sau (client ưu tiên phần cuối nó render được)
+    msg.attach(MIMEText(text, "plain", "utf-8"))
     msg.attach(MIMEText(html, "html", "utf-8"))
     with smtplib.SMTP("smtp.gmail.com", 587) as s:
         s.starttls()
@@ -352,5 +381,6 @@ def send(report: DailyReport, dry_run: bool = False) -> None:
             html = _build_html(CHANNEL_TITLE[ch], date_str, page_groups,
                                page=idx if total > 1 else None,
                                total_pages=total if total > 1 else None)
-            _send_one(to_email, subject, html, gmail_user, gmail_pass)
+            text = _build_text(CHANNEL_TITLE[ch], date_str, page_groups)
+            _send_one(to_email, subject, text, html, gmail_user, gmail_pass)
             print(f"[sent] {subject} → {to_email}")

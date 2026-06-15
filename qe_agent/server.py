@@ -59,11 +59,12 @@ except ImportError:
 _scheduler = None
 
 
-def _run_scheduled(sched_id: int):
-    """Job body — re-reads the schedule each fire so edits take effect."""
+def _run_scheduled(sched_id: int) -> dict:
+    """Job body — re-reads the schedule each fire so edits take effect.
+    Returns {status, summary, action} so the 'Run now' API can report outcome."""
     sched = webstore.get_schedule(sched_id)
     if not sched or not sched["enabled"]:
-        return
+        return {"status": "fail", "summary": "Lịch không tồn tại hoặc đã tắt", "action": None}
     try:
         if sched["action"] == "send":
             res = qa_service.send_report(
@@ -73,10 +74,13 @@ def _run_scheduled(sched_id: int):
             res = qa_service.run_scan(
                 source=sched["source"], snapshot_file=sched["snapshot_file"],
                 jql=sched["jql"], task_type="scheduled_scan")
-        webstore.mark_schedule_run(sched_id, res.get("status", "pass"))
+        st = res.get("status", "pass")
+        webstore.mark_schedule_run(sched_id, st)
+        return {"status": st, "summary": res.get("summary", ""), "action": sched["action"]}
     except Exception as e:  # pragma: no cover
         print(f"[scheduler] job {sched_id} failed: {e}", file=sys.stderr)
         webstore.mark_schedule_run(sched_id, "fail")
+        return {"status": "fail", "summary": str(e), "action": sched["action"]}
 
 
 def _add_job(sched: dict):
@@ -321,8 +325,8 @@ def api_schedule_toggle(sched_id: int):
 
 @app.post("/api/schedules/{sched_id}/run")
 def api_schedule_run_now(sched_id: int):
-    _run_scheduled(sched_id)
-    return {"ran": sched_id}
+    # sync def → runs in threadpool (blocking SMTP/scan won't stall the event loop)
+    return _run_scheduled(sched_id)
 
 
 if __name__ == "__main__":

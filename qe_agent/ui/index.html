@@ -115,6 +115,11 @@ function switchView(id){
 }
 function setView(html){const v=document.getElementById('views');v.innerHTML='';v.appendChild(typeof html==='string'?el(`<div>${html}</div>`):html);}
 function badge(c,t){return `<span class="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-${c}-100 text-${c}-700">${t}</span>`}
+function toast(msg, ok=true){
+  const t=el(`<div class="fixed top-4 right-4 z-50 px-4 py-3 rounded-xl shadow-lg text-sm font-medium fadein ${ok?'bg-emerald-600':'bg-red-600'} text-white max-w-sm">${esc(msg)}</div>`);
+  document.body.appendChild(t);
+  setTimeout(()=>{t.style.transition='opacity .4s';t.style.opacity='0';setTimeout(()=>t.remove(),400);}, 3500);
+}
 
 // ================= CHAT =================
 let chatHistory=[];
@@ -124,12 +129,12 @@ VIEWS.chat=()=>{
     <div id="msgs" class="flex-1 overflow-y-auto scroll px-6 py-5 space-y-4"></div>
     <div class="border-t bg-white px-6 py-3">
       <div class="flex gap-2 max-w-3xl mx-auto">
-        <input id="chatIn" placeholder="Hỏi về trạng thái QE, vi phạm, hoặc yêu cầu sinh test checklist…"
+        <input id="chatIn" placeholder="Hỏi về trạng thái sprint hiện tại hoặc phân tích insights.."
           class="flex-1 border rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-[var(--zp)] outline-none"/>
         <button id="chatSend" class="bg-[var(--zp)] text-white px-5 rounded-xl font-medium hover:opacity-90">Gửi</button>
       </div>
       <div class="max-w-3xl mx-auto mt-2 flex flex-wrap gap-2 text-xs">
-        ${['Phân tích vi phạm QE sprint hiện tại','Ticket nào đang vi phạm Level 1?','Phân tích insights & xu hướng vi phạm QE'].map(q=>
+        ${['Phân tích vi phạm của sprint hiện tại','Ticket nào đang vi phạm Level 1?','Phân tích insights và xu hướng vi phạm'].map(q=>
         `<button class="chip px-3 py-1 rounded-full bg-slate-100 hover:bg-slate-200">${q}</button>`).join('')}
       </div>
     </div></div>`);
@@ -339,6 +344,7 @@ VIEWS.sched=async()=>{
       : 'TZ Asia/Ho_Chi_Minh';
   };
   sSource.onchange=syncSrc; syncSrc();
+  let running=false;   // chặn 'Chạy ngay' đồng thời khi đang đợi phản hồi
   // day-of-week toggles (default Mon–Fri selected)
   const dayBtns=[...wrap.querySelectorAll('.dayb')];
   const setDay=(b,on)=>{
@@ -365,7 +371,24 @@ VIEWS.sched=async()=>{
         <button data-a="toggle" class="text-sm px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200">${s.enabled?'Tắt':'Bật'}</button>
         <button data-a="del" class="text-sm px-3 py-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100">Xoá</button>
       </div>`);
-      row.querySelector('[data-a=run]').onclick=async()=>{await API(`/api/schedules/${s.id}/run`,{method:'POST'});VIEWS.sched();};
+      row.querySelector('[data-a=run]').onclick=async(e)=>{
+        if(running)return;                       // chặn gửi request khác khi đang chờ
+        running=true;
+        const btn=e.currentTarget; const orig=btn.innerHTML;
+        wrap.querySelectorAll('[data-a=run]').forEach(b=>b.disabled=true);
+        btn.innerHTML='⏳ Đang chạy…';
+        try{
+          const r=await API(`/api/schedules/${s.id}/run`,{method:'POST'});
+          const ok = r && r.status==='pass';
+          if(s.action==='send') toast(ok?'Đã gửi thành công':'Đã có lỗi xảy ra. Báo cáo chưa được gửi.', ok);
+          else toast(ok?'Đã chạy quét thành công':'Đã có lỗi xảy ra khi chạy quét.', ok);
+        }catch(err){
+          toast(s.action==='send'?'Đã có lỗi xảy ra. Báo cáo chưa được gửi.':'Đã có lỗi xảy ra khi chạy quét.', false);
+        }
+        running=false;
+        btn.innerHTML=orig;
+        VIEWS.sched();
+      };
       row.querySelector('[data-a=toggle]').onclick=async()=>{await API(`/api/schedules/${s.id}/toggle`,{method:'POST'});VIEWS.sched();};
       row.querySelector('[data-a=del]').onclick=async()=>{if(confirm('Xoá lịch này?')){await API(`/api/schedules/${s.id}`,{method:'DELETE'});VIEWS.sched();}};
       c.appendChild(row);
@@ -386,38 +409,115 @@ VIEWS.sched=async()=>{
 };
 
 // ================= HISTORY =================
+// Chỉ hiển thị 2 loại action: quét vi phạm (scan) và gửi report Teams (send)
+const HIST_TYPES={
+  scan:           {ic:'🔍', t:'Quét vi phạm'},
+  scheduled_scan: {ic:'🔍', t:'Quét vi phạm (định lịch)'},
+  send:           {ic:'📧', t:'Gửi report Teams'},
+  scheduled_send: {ic:'📧', t:'Gửi report Teams (định lịch)'},
+};
+// Status = KẾT QUẢ THỰC THI (không phải mức vi phạm)
+const RUN_STATUS={pass:{t:'Thành công',c:'emerald'},warn:{t:'Một phần',c:'amber'},fail:{t:'Lỗi',c:'red'},running:{t:'Đang chạy',c:'sky'}};
+// rút mức vi phạm từ summary "L1=4 L2=0 L3=0 L0=14" → chip màu
+function sevChips(summary){
+  const m=k=>{const r=(summary||'').match(new RegExp(k+'=(\\d+)'));return r?+r[1]:0;};
+  const L1=m('L1'),L2=m('L2'),L3=m('L3'),L0=m('L0');
+  const chip=(e,n,c)=>n?`<span class="px-1.5 py-0.5 rounded text-[11px] font-semibold bg-${c}-100 text-${c}-700">${e} ${n}</span>`:'';
+  const out=[chip('🔴',L1,'red'),chip('🟠',L2,'orange'),chip('🟡',L3,'yellow'),chip('⚪',L0,'slate')].filter(Boolean).join(' ');
+  return out||'<span class="text-emerald-600 text-xs">🎉 sạch</span>';
+}
+const SEVERITY={critical:{t:'Có vi phạm nghiêm trọng',c:'red'},warn:{t:'Có nguy cơ / thiếu data',c:'amber'},clean:{t:'Sạch',c:'emerald'}};
+function metaItem(label,val){return `<div class="bg-slate-50 rounded-lg px-3 py-2"><div class="text-[11px] text-slate-400">${label}</div><div class="font-medium break-words">${esc(val==null||val===''?'—':val)}</div></div>`;}
+// Render chi tiết 1 lượt chạy ở dạng dễ đọc cho người dùng mới
+function renderHistDetail(t, resp){
+  const d = resp.detail || resp;
+  const H=HIST_TYPES[t.type]||{ic:'•',t:t.type}, S=RUN_STATUS[t.status]||{t:t.status,c:'slate'};
+  let h=`<div class="bg-white border rounded-xl p-5">
+    <div class="flex items-center gap-3 mb-4 flex-wrap">
+      <span class="text-lg font-semibold">${H.ic} ${H.t}</span>
+      ${badge(S.c,'Kết quả: '+S.t)}
+      ${(t.type.includes('scan') && d.severity)?badge(SEVERITY[d.severity].c, SEVERITY[d.severity].t):''}
+      <span class="text-xs text-slate-400 ml-auto">🕒 ${fmtTime(t.finished_at||t.created_at)}</span>
+    </div>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
+      ${metaItem('Ngày scan', d.scan_date)}
+      ${metaItem('Nguồn dữ liệu', d.source==='live'?'🌐 Live Jira':'📄 Snapshot')}
+      ${d.snapshot_file?metaItem('File snapshot', d.snapshot_file):''}
+      ${d.ticket_count!=null?metaItem('Số ticket quét', d.ticket_count):''}
+    </div>`;
+  if(d.error){
+    h+=`<div class="bg-red-50 text-red-700 rounded-lg p-3 text-sm">❌ Lỗi: ${esc(d.error)}</div>`;
+  } else if(t.type.includes('scan') && d.by_level){
+    const total=d.violation_count||0;
+    h+=`<div class="mb-3 text-sm">Phát hiện <b>${total}</b> vi phạm trên <b>${d.ticket_count}</b> ticket.</div>`;
+    if(!total) h+='<div class="text-emerald-600 py-2">🎉 Không có vi phạm nào.</div>';
+    [1,2,3,0].forEach(l=>{
+      const vs=d.by_level[l]||[]; if(!vs.length)return;
+      const L=LEVELS[l];
+      h+=`<div class="mb-3"><div class="font-semibold text-${L.c}-700 mb-1">${L.e} ${L.n} — ${vs.length}</div>
+        <div class="border rounded-lg divide-y">`;
+      vs.forEach(v=>{ h+=`<div class="px-3 py-2 text-sm flex gap-3">
+        <span class="font-mono text-[var(--zp)] w-24 shrink-0">${esc(v.ticket)}</span>
+        <span class="flex-1 min-w-0">${esc(v.msg)}<span class="block text-xs text-slate-400 mt-0.5">${esc(v.rule)}${v.qe_pic?' · QE: '+esc(v.qe_pic):''}${v.assignee?' · '+esc(v.assignee):''}</span></span></div>`; });
+      h+='</div></div>';
+    });
+  } else if(t.type.includes('send')){
+    const line = d.dry_run ? '🔸 Chế độ xem trước (dry-run) — chưa gửi email thật'
+      : (d.creds_ok===false ? '⚠️ Thiếu cấu hình email (GMAIL/TEAMS_EMAIL) — chưa gửi được'
+      : '✅ Đã gửi report tới Teams');
+    h+=`<div class="text-sm space-y-2"><div>${line}</div>`;
+    if(d.channels && d.channels.length) h+=`<div>Kênh nhận: ${d.channels.map(c=>badge('sky',c)).join(' ')}</div>`;
+    if(d.summary) h+=`<div class="text-slate-500">${esc(d.summary)}</div>`;
+    h+='</div>';
+  } else {
+    h+=`<div class="text-sm text-slate-600">${esc(d.summary||t.summary||'')}</div>`;
+  }
+  h+=`<details class="mt-4"><summary class="text-xs text-slate-400 cursor-pointer select-none">Xem dữ liệu thô (JSON)</summary>
+    <div class="bg-slate-900 text-slate-100 rounded-lg p-3 text-xs overflow-x-auto mt-2"><pre>${esc(JSON.stringify(d,null,2))}</pre></div></details></div>`;
+  return h;
+}
 VIEWS.history=async()=>{
   setView('<div class="p-6 text-slate-400">Đang tải…</div>');
-  const [st,h]=await Promise.all([API('/api/stats'),API('/api/history?limit=200')]);
+  const h=await API('/api/history?limit=300');
+  const tasks=(h.tasks||[]).filter(t=>HIST_TYPES[t.type]);   // chỉ scan + send
+  const cnt=(f)=>tasks.filter(f).length;
+  const cards=[
+    ['Tổng lượt', tasks.length, 'slate'],
+    ['🔍 Quét', cnt(t=>t.type.includes('scan')), 'sky'],
+    ['📧 Gửi report', cnt(t=>t.type.includes('send')), 'violet'],
+    ['⚠️ Lỗi', cnt(t=>t.status==='fail'), 'red'],
+  ];
   const wrap=el(`<div class="h-full overflow-y-auto scroll p-6">
     <div class="grid grid-cols-4 gap-3 mb-5">
-      ${[['total','Tổng','slate'],['pass','Pass','emerald'],['warn','Warn','amber'],['fail','Fail','red']].map(([k,t,c])=>
-      `<div class="bg-white border rounded-xl p-4"><div class="text-2xl font-bold text-${c}-600">${st[k]||0}</div><div class="text-sm text-slate-500">${t}</div></div>`).join('')}
+      ${cards.map(([t,n,c])=>`<div class="bg-white border rounded-xl p-4"><div class="text-2xl font-bold text-${c}-600">${n}</div><div class="text-sm text-slate-500">${t}</div></div>`).join('')}
     </div>
     <div class="bg-white border rounded-xl overflow-hidden">
       <table class="w-full text-sm"><thead class="bg-slate-50 text-slate-500 text-left">
-        <tr><th class="px-4 py-2">#</th><th class="px-4 py-2">Loại</th><th class="px-4 py-2">Trạng thái</th>
-        <th class="px-4 py-2">Tóm tắt</th><th class="px-4 py-2">Thời gian</th></tr></thead>
+        <tr><th class="px-4 py-2">Hành động</th><th class="px-4 py-2">Kết quả</th>
+        <th class="px-4 py-2">Chi tiết</th><th class="px-4 py-2">Thời gian</th></tr></thead>
         <tbody id="hBody" class="divide-y"></tbody></table></div>
     <div id="hDetail" class="mt-4"></div></div>`);
   setView(wrap);
   const tb=wrap.querySelector('#hBody');
-  (h.tasks||[]).forEach(t=>{
-    const S=STATUS[t.status]||{t:t.status,c:'slate'};
+  tasks.forEach(t=>{
+    const H=HIST_TYPES[t.type], S=RUN_STATUS[t.status]||{t:t.status,c:'slate'};
+    const isScan=t.type.includes('scan');
+    const detailCell = isScan ? sevChips(t.summary) : esc(t.summary||'');
     const tr=elTr(`<tr class="hover:bg-slate-50 cursor-pointer">
-      <td class="px-4 py-2 text-slate-400">${t.id}</td>
-      <td class="px-4 py-2"><span class="font-mono text-xs">${esc(t.type)}</span></td>
+      <td class="px-4 py-2 whitespace-nowrap">${H.ic} ${H.t}</td>
       <td class="px-4 py-2">${badge(S.c,S.t)}</td>
-      <td class="px-4 py-2">${esc(t.summary||'')}</td>
+      <td class="px-4 py-2">${detailCell}</td>
       <td class="px-4 py-2 text-slate-400 whitespace-nowrap">${fmtTime(t.finished_at||t.created_at)}</td></tr>`);
     tr.onclick=async()=>{
+      const dEl=wrap.querySelector('#hDetail');
+      dEl.innerHTML='<div class="text-slate-400 text-sm">Đang tải chi tiết…</div>';
       const d=await API(`/api/history/${t.id}`);
-      wrap.querySelector('#hDetail').innerHTML=`<div class="bg-slate-900 text-slate-100 rounded-xl p-4 text-xs overflow-x-auto"><pre>${esc(JSON.stringify(d.detail||d,null,2))}</pre></div>`;
-      wrap.querySelector('#hDetail').scrollIntoView({behavior:'smooth'});
+      dEl.innerHTML=renderHistDetail(t, d);
+      dEl.scrollIntoView({behavior:'smooth'});
     };
     tb.appendChild(tr);
   });
-  if(!(h.tasks||[]).length)tb.appendChild(elTr('<tr><td colspan="5" class="px-4 py-6 text-center text-slate-400">Chưa có task nào.</td></tr>'));
+  if(!tasks.length)tb.appendChild(elTr('<tr><td colspan="4" class="px-4 py-6 text-center text-slate-400">Chưa có lượt quét / gửi report nào.</td></tr>'));
 };
 
 // ================= INSIGHTS =================
