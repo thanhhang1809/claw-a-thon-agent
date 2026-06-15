@@ -24,7 +24,7 @@ from typing import Any, Optional
 _DIR = os.path.dirname(os.path.abspath(__file__))
 _DB = os.path.join(_DIR, "watchdog.db")
 
-# ZaloPay timezone for human-friendly timestamps
+# Zalopay timezone for human-friendly timestamps
 _TZ = timezone(timedelta(hours=7))
 
 

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>QA Watchdog — ZaloPay</title>
+<title>QE Watchdog — Zalopay</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <style>
@@ -30,8 +30,8 @@
   <aside class="w-60 bg-slate-900 text-slate-300 flex flex-col shrink-0">
     <div class="px-5 py-4 flex items-center gap-2 border-b border-slate-800">
       <div class="w-9 h-9 rounded-xl bg-[var(--zp)] flex items-center justify-center text-white text-lg font-bold">🐶</div>
-      <div><div class="text-white font-semibold leading-tight">QA Watchdog</div>
-      <div class="text-[11px] text-slate-400">ZaloPay · GreenNode</div></div>
+      <div><div class="text-white font-semibold leading-tight">QE Watchdog</div>
+      <div class="text-[11px] text-slate-400">Zalopay · GreenNode</div></div>
     </div>
     <nav id="nav" class="flex-1 py-3 space-y-1 px-2 text-sm"></nav>
     <div class="px-4 py-3 border-t border-slate-800 text-[11px] text-slate-500">
@@ -60,7 +60,10 @@
 
 <script>
 const API = (p,opt)=>fetch(p,opt).then(async r=>{const t=await r.text();try{return JSON.parse(t)}catch{return t}});
-const el = (h)=>{const d=document.createElement('div');d.innerHTML=h.trim();return d.firstChild};
+// <template> parses ANY fragment incl. <tr>/<td> (a <div> would drop table tags)
+const el = (h)=>{const t=document.createElement('template');t.innerHTML=h.trim();return t.content.firstElementChild;};
+// table rows must be parsed inside a real <table> context
+const elTr = (h)=>{const t=document.createElement('table');t.innerHTML='<tbody>'+h.trim()+'</tbody>';return t.querySelector('tr');};
 const esc = (s)=>(s??'').toString().replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 const fmtTime = (s)=>s? new Date(s).toLocaleString('vi-VN',{hour12:false}) : '—';
 const todayStr = ()=>new Date().toISOString().slice(0,10);
@@ -75,10 +78,8 @@ const NAV = [
   {id:'chat',  ic:'💬', t:'Chat'},
   {id:'scan',  ic:'🔍', t:'Scan & Vi phạm'},
   {id:'rules', ic:'📐', t:'Rules'},
-  {id:'report',ic:'📧', t:'Report → Teams'},
   {id:'sched', ic:'⏰', t:'Lịch chạy'},
   {id:'history',ic:'🗂️', t:'Lịch sử'},
-  {id:'insights',ic:'📈', t:'Insights'},
 ];
 let activeView='chat';
 
@@ -123,12 +124,12 @@ VIEWS.chat=()=>{
     <div id="msgs" class="flex-1 overflow-y-auto scroll px-6 py-5 space-y-4"></div>
     <div class="border-t bg-white px-6 py-3">
       <div class="flex gap-2 max-w-3xl mx-auto">
-        <input id="chatIn" placeholder="Hỏi về trạng thái QA, vi phạm, hoặc yêu cầu sinh test checklist…"
+        <input id="chatIn" placeholder="Hỏi về trạng thái QE, vi phạm, hoặc yêu cầu sinh test checklist…"
           class="flex-1 border rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-[var(--zp)] outline-none"/>
         <button id="chatSend" class="bg-[var(--zp)] text-white px-5 rounded-xl font-medium hover:opacity-90">Gửi</button>
       </div>
       <div class="max-w-3xl mx-auto mt-2 flex flex-wrap gap-2 text-xs">
-        ${['Phân tích vi phạm QA sprint hiện tại','Ticket nào đang vi phạm Level 1?','Sinh test checklist ISTQB cho 1 ticket'].map(q=>
+        ${['Phân tích vi phạm QE sprint hiện tại','Ticket nào đang vi phạm Level 1?','Phân tích insights & xu hướng vi phạm QE'].map(q=>
         `<button class="chip px-3 py-1 rounded-full bg-slate-100 hover:bg-slate-200">${q}</button>`).join('')}
       </div>
     </div></div>`);
@@ -136,28 +137,57 @@ VIEWS.chat=()=>{
   const msgs=wrap.querySelector('#msgs');
   if(!chatHistory.length){
     msgs.appendChild(el(`<div class="text-center text-slate-400 mt-10">
-      <div class="text-5xl mb-3">🐶</div><div class="font-medium">QA Watchdog Agent</div>
-      <div class="text-sm">Hỏi bất cứ điều gì về quy trình QA của team.</div></div>`));
+      <div class="text-5xl mb-3">🐶</div><div class="font-medium">QE Watchdog Agent</div>
+      <div class="text-sm">Hỏi bất cứ điều gì về quy trình QE của team.</div></div>`));
   } else chatHistory.forEach(m=>msgs.appendChild(bubble(m.role,m.text)));
   const input=wrap.querySelector('#chatIn'), send=wrap.querySelector('#chatSend');
   wrap.querySelectorAll('.chip').forEach(c=>c.onclick=()=>{input.value=c.textContent;send.click();});
+  let busy=false;
+  const dots='<span class="typing text-slate-400"><span>●</span><span>●</span><span>●</span></span>';
   const go=async()=>{
+    if(busy)return;                       // chặn gửi trùng (double Enter / click)
     const q=input.value.trim(); if(!q)return;
+    busy=true; send.disabled=true;
     if(!chatHistory.length) msgs.innerHTML='';
     input.value='';
     chatHistory.push({role:'user',text:q}); msgs.appendChild(bubble('user',q));
-    const t=el(`<div class="flex"><div class="typing bg-white border rounded-2xl px-4 py-3 text-slate-400"><span>●</span><span>●</span><span>●</span></div></div>`);
-    msgs.appendChild(t); msgs.scrollTop=msgs.scrollHeight;
+    // bong bóng bot: 1 dòng trạng thái (tool progress) + 1 vùng nội dung stream
+    const wrapB=el(`<div class="flex gap-2 fadein"><div class="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center shrink-0">🐶</div>
+      <div class="max-w-[80%] min-w-0"><div class="botStatus text-xs text-slate-400 mb-1 italic"></div>
+      <div class="botBody prose-chat bg-white border rounded-2xl rounded-tl-sm px-4 py-3">${dots}</div></div></div>`);
+    msgs.appendChild(wrapB); msgs.scrollTop=msgs.scrollHeight;
+    const statusEl=wrapB.querySelector('.botStatus'), bodyEl=wrapB.querySelector('.botBody');
+    let text='';
+    const render=()=>{ bodyEl.innerHTML = text ? marked.parse(text) : dots; };
     try{
-      const r=await API('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},
+      const resp=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({message:q, ...SRC})});
-      t.remove();
-      const txt=r.reply||r.error||'(không có phản hồi)';
-      chatHistory.push({role:'bot',text:txt}); msgs.appendChild(bubble('bot',txt));
-    }catch(e){t.remove();msgs.appendChild(bubble('bot','Lỗi: '+e));}
+      const reader=resp.body.getReader(); const dec=new TextDecoder(); let buf='';
+      while(true){
+        const {value,done}=await reader.read(); if(done)break;
+        buf+=dec.decode(value,{stream:true});
+        const parts=buf.split('\n\n'); buf=parts.pop();
+        for(const p of parts){
+          const line=p.trim(); if(!line.startsWith('data:'))continue;
+          let ev; try{ev=JSON.parse(line.slice(5).trim());}catch{continue;}
+          if(ev.type==='status'){ statusEl.textContent=ev.msg; }
+          else if(ev.type==='clear'){ text=''; render(); }
+          else if(ev.type==='delta'){ text+=ev.text; render(); msgs.scrollTop=msgs.scrollHeight; }
+          else if(ev.type==='done'){ if(ev.text) text=ev.text; statusEl.textContent=''; render(); }
+        }
+      }
+    }catch(e){ text='Lỗi: '+e; render(); }
+    statusEl.textContent='';
+    if(!text) { text='(không có phản hồi)'; render(); }
+    chatHistory.push({role:'bot',text});
+    busy=false; send.disabled=false;
     msgs.scrollTop=msgs.scrollHeight;
   };
-  send.onclick=go; input.onkeydown=e=>{if(e.key==='Enter')go();};
+  send.onclick=go;
+  // bỏ qua Enter khi IME đang compose (gõ tiếng Việt) để không gửi 2 lần
+  input.onkeydown=e=>{
+    if(e.key==='Enter' && !e.isComposing && e.keyCode!==229){ e.preventDefault(); go(); }
+  };
   input.focus();
 };
 function bubble(role,text){
@@ -258,7 +288,7 @@ VIEWS.report=()=>{
     frame.srcdoc=typeof html==='string'?html:(html.error||'');msg.innerHTML='';
   };
   wrap.querySelector('#rSend').onclick=async()=>{
-    if(!confirm('Gửi report QA thật tới các channel Teams?'))return;
+    if(!confirm('Gửi report QE thật tới các channel Teams?'))return;
     msg.innerHTML='<span class="text-slate-400">Đang gửi…</span>';
     const r=await API('/api/report/send',{method:'POST',headers:{'Content-Type':'application/json'},body:body()});
     if(r.error){msg.innerHTML=`<span class="text-red-600">Lỗi: ${esc(r.error)}</span>`;return;}
@@ -275,17 +305,20 @@ VIEWS.sched=async()=>{
     <div class="bg-white border rounded-xl p-4 mb-6 max-w-3xl">
       <h3 class="font-semibold mb-3">➕ Tạo lịch chạy mới</h3>
       <div class="grid grid-cols-2 gap-3 text-sm">
-        <label class="block">Tên<input id="sName" value="Daily QA scan" class="w-full border rounded-lg px-3 py-2 mt-1"/></label>
+        <label class="block">Tên<input id="sName" value="Daily report Teams" class="w-full border rounded-lg px-3 py-2 mt-1"/></label>
         <label class="block">Hành động<select id="sAct" class="w-full border rounded-lg px-3 py-2 mt-1">
-          <option value="scan">Scan vi phạm</option><option value="send">Gửi report Teams</option></select></label>
+          <option value="send">Gửi report Teams</option></select></label>
         <label class="block">Giờ<input id="sH" type="number" min="0" max="23" value="9" class="w-full border rounded-lg px-3 py-2 mt-1"/></label>
         <label class="block">Phút<input id="sM" type="number" min="0" max="59" value="0" class="w-full border rounded-lg px-3 py-2 mt-1"/></label>
         <label class="block">Nguồn dữ liệu<select id="sSource" class="w-full border rounded-lg px-3 py-2 mt-1">
           <option value="snapshot">📄 Snapshot</option><option value="live">🌐 Live Jira</option></select></label>
         <label class="block">Snapshot file<select id="sSnap" class="w-full border rounded-lg px-3 py-2 mt-1"></select></label>
-        <label class="block col-span-2">Ngày trong tuần
-          <input id="sD" value="mon-fri" class="w-full border rounded-lg px-3 py-2 mt-1"/>
-          <span class="text-xs text-slate-400">vd: mon-fri, mon,wed,fri, *</span></label>
+        <div class="block col-span-2">Ngày trong tuần
+          <div id="sDays" class="flex flex-wrap gap-1.5 mt-1">
+            ${[['mon','T2'],['tue','T3'],['wed','T4'],['thu','T5'],['fri','T6'],['sat','T7'],['sun','CN']].map(([v,l])=>
+              `<button type="button" data-day="${v}" class="dayb px-3.5 py-1.5 rounded-lg border text-sm font-medium select-none">${l}</button>`).join('')}
+          </div>
+          <span class="text-xs text-slate-400">Bấm để chọn / bỏ chọn từng ngày</span></div>
       </div>
       <button id="sAdd" class="mt-3 bg-[var(--zp)] text-white px-4 py-2 rounded-lg font-medium">Tạo lịch</button>
       <span id="sNote" class="text-xs text-slate-400 ml-2">TZ Asia/Ho_Chi_Minh</span>
@@ -306,6 +339,19 @@ VIEWS.sched=async()=>{
       : 'TZ Asia/Ho_Chi_Minh';
   };
   sSource.onchange=syncSrc; syncSrc();
+  // day-of-week toggles (default Mon–Fri selected)
+  const dayBtns=[...wrap.querySelectorAll('.dayb')];
+  const setDay=(b,on)=>{
+    b.dataset.on = on ? '1' : '';
+    b.classList.toggle('bg-[var(--zp)]', on);
+    b.classList.toggle('text-white', on);
+    b.classList.toggle('border-[var(--zp)]', on);
+    b.classList.toggle('text-slate-500', !on);
+  };
+  dayBtns.forEach(b=>{
+    setDay(b, ['mon','tue','wed','thu','fri'].includes(b.dataset.day));
+    b.onclick=()=>setDay(b, b.dataset.on!=='1');
+  });
   const render=(list)=>{
     const c=wrap.querySelector('#sList');c.innerHTML='';
     if(!list.length){c.innerHTML='<div class="text-slate-400">Chưa có lịch nào.</div>';return;}
@@ -328,10 +374,12 @@ VIEWS.sched=async()=>{
   render(data.schedules||[]);
   wrap.querySelector('#sAdd').onclick=async()=>{
     const src=sSource.value;
+    const days=dayBtns.filter(b=>b.dataset.on==='1').map(b=>b.dataset.day).join(',');
+    if(!days){alert('Chọn ít nhất 1 ngày trong tuần');return;}
     await API('/api/schedules',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
       name:wrap.querySelector('#sName').value, action:wrap.querySelector('#sAct').value,
       hour:+wrap.querySelector('#sH').value, minute:+wrap.querySelector('#sM').value,
-      days:wrap.querySelector('#sD').value,
+      days,
       source:src, snapshot_file: src==='live'? null : sSnap.value})});
     VIEWS.sched();
   };
@@ -356,7 +404,7 @@ VIEWS.history=async()=>{
   const tb=wrap.querySelector('#hBody');
   (h.tasks||[]).forEach(t=>{
     const S=STATUS[t.status]||{t:t.status,c:'slate'};
-    const tr=el(`<tr class="hover:bg-slate-50 cursor-pointer">
+    const tr=elTr(`<tr class="hover:bg-slate-50 cursor-pointer">
       <td class="px-4 py-2 text-slate-400">${t.id}</td>
       <td class="px-4 py-2"><span class="font-mono text-xs">${esc(t.type)}</span></td>
       <td class="px-4 py-2">${badge(S.c,S.t)}</td>
@@ -369,7 +417,7 @@ VIEWS.history=async()=>{
     };
     tb.appendChild(tr);
   });
-  if(!(h.tasks||[]).length)tb.appendChild(el('<tr><td colspan="5" class="px-4 py-6 text-center text-slate-400">Chưa có task nào.</td></tr>'));
+  if(!(h.tasks||[]).length)tb.appendChild(elTr('<tr><td colspan="5" class="px-4 py-6 text-center text-slate-400">Chưa có task nào.</td></tr>'));
 };
 
 // ================= INSIGHTS =================

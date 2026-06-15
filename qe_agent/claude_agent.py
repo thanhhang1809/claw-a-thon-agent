@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-QA Watchdog — GreenNode LLM Agent (OpenAI-compatible)
+QE Watchdog — GreenNode LLM Agent (OpenAI-compatible)
 
 Model strategy:
-  AGENT_MODEL    minimax/minimax-m2.5          — tool use / QA analysis (paid, agentic)
+  AGENT_MODEL    minimax/minimax-m2.5          — tool use / QE analysis (paid, agentic)
   CHECKLIST_MODEL deepseek/deepseek-reasoner   — TEP + ISTQB checklist (free, reasoning)
   FALLBACK_MODEL  qwen/qwen3-235b-a22b-instruct-2507  — free 235B, unlimited
 
@@ -65,9 +65,9 @@ _RULES_YAML = os.path.join(_SCRIPT_DIR, "rules.yaml")
 _WATCHDOG_DB = os.path.join(_SCRIPT_DIR, "watchdog.db")
 
 # ---------------------------------------------------------------- system prompts
-SYSTEM_PROMPT_AGENT = """Bạn là QA Watchdog Agent của team ZaloPay — chuyên phân tích QA process và phát hiện vi phạm.
+SYSTEM_PROMPT_AGENT = """Bạn là QE Watchdog Agent của team Zalopay — chuyên phân tích QE process và phát hiện vi phạm.
 
-Khi user hỏi về trạng thái QA hoặc cung cấp JQL:
+Khi user hỏi về trạng thái QE hoặc cung cấp JQL:
 1. Dùng `search_jira` để lấy danh sách tickets
 2. Dùng `run_rule_engine` để đánh giá vi phạm
 3. Tổng hợp kết quả rõ ràng bằng tiếng Việt
@@ -86,7 +86,7 @@ Sau khi có kết quả:
 
 Luôn trả lời bằng tiếng Việt trừ khi user yêu cầu tiếng Anh."""
 
-SYSTEM_PROMPT_CHECKLIST = """Bạn là QA Watchdog Agent của team ZaloPay — chuyên sinh test checklist ISTQB chất lượng cao.
+SYSTEM_PROMPT_CHECKLIST = """Bạn là QE Watchdog Agent của team Zalopay — chuyên sinh test checklist ISTQB chất lượng cao.
 
 Khi user yêu cầu sinh test checklist / phân tích TEP / tạo test plan cho 1 ticket:
 1. Dùng `get_ticket_detail` để lấy đầy đủ thông tin ticket
@@ -130,7 +130,7 @@ TOOLS = [
         "function": {
             "name": "run_rule_engine",
             "description": (
-                "Chạy rule engine QA Watchdog trên danh sách tickets. "
+                "Chạy rule engine QE Watchdog trên danh sách tickets. "
                 "Phát hiện vi phạm level 0-3. "
                 "Lưu vi phạm vào DB, auto-resolve ticket đã hết vi phạm, escalate repeat offender."
             ),
@@ -295,139 +295,156 @@ def _is_checklist_request(msg: str) -> bool:
 
 
 # ---------------------------------------------------------------- agent loop (OpenAI SDK)
-def run_agent(user_message: str, *, verbose: bool = True,
-              snapshot: Optional[str] = None) -> str:
+# Friendly progress labels for the streaming UI
+TOOL_LABELS = {
+    "search_jira":        "🔍 Đang tìm tickets từ Jira…",
+    "run_rule_engine":    "⚙️ Đang đánh giá vi phạm QE…",
+    "get_ticket_history": "📜 Đang xem lịch sử ticket…",
+    "get_ticket_detail":  "📄 Đang lấy chi tiết ticket…",
+}
 
+
+def run_agent_stream(user_message: str, *, verbose: bool = False):
+    """Generator phát sự kiện cho UI streaming:
+      {"type":"status","msg":...}  — đang chạy tool (tiến trình)
+      {"type":"clear"}             — xoá text tạm (thinking) trước khi gọi tool
+      {"type":"delta","text":...}  — token text mới (stream dần)
+      {"type":"done","text":...}   — câu trả lời cuối cùng đầy đủ
+    """
     if not GREENNODE_API_KEY:
-        print("ERROR: GREENNODE_API_KEY chưa được set trong .env", file=sys.stderr)
-        sys.exit(1)
+        yield {"type": "done", "text": "ERROR: GREENNODE_API_KEY chưa được set."}
+        return
 
     client = OpenAI(api_key=GREENNODE_API_KEY, base_url=GREENNODE_BASE_URL)
 
-    # Pick model based on task
     is_checklist = _is_checklist_request(user_message)
     primary_model = CHECKLIST_MODEL if is_checklist else AGENT_MODEL
     system_prompt = SYSTEM_PROMPT_CHECKLIST if is_checklist else SYSTEM_PROMPT_AGENT
 
-    if verbose:
-        task = "TEP/Checklist" if is_checklist else "QA Analysis"
-        print(f"[agent] Task: {task} → model: {primary_model}", file=sys.stderr)
-
-    messages = [
+    base_messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_message},
     ]
+    messages = list(base_messages)
     final_text = ""
+    MAX_TURNS = 8
+    MAX_EMPTY = 2
 
-    for attempt in range(2):  # retry once with fallback model on failure
+    for attempt in range(2):  # fallback model on empty/failure
         model = primary_model if attempt == 0 else FALLBACK_MODEL
-        if attempt > 0 and verbose:
-            print(f"\n[agent] Falling back to {model}", file=sys.stderr)
-
         try:
-            while True:
+            turns = 0
+            empty_streak = 0
+            while turns < MAX_TURNS:
+                turns += 1
                 stream = client.chat.completions.create(
-                    model=model,
-                    messages=messages,
-                    tools=TOOLS,
-                    tool_choice="auto",
-                    stream=True,
+                    model=model, messages=messages, tools=TOOLS,
+                    tool_choice="auto", stream=True,
                 )
 
                 collected_text = []
-                tool_calls_map = {}  # index → {id, name, arguments}
-                # Track finish_reason across all chunks — GreenNode's last chunk has empty choices
+                tool_calls_map = {}
                 finish_reason = "stop"
 
                 for chunk in stream:
-                    if chunk.choices:
-                        fr = chunk.choices[0].finish_reason
-                        if fr:
-                            finish_reason = fr
-                        delta = chunk.choices[0].delta
-                        if not delta:
-                            continue
-
-                        # Stream text
-                        if delta.content:
-                            if verbose:
-                                print(delta.content, end="", flush=True)
-                            collected_text.append(delta.content)
-
-                        # Accumulate tool call chunks
-                        if delta.tool_calls:
-                            for tc in delta.tool_calls:
-                                idx = tc.index
-                                if idx not in tool_calls_map:
-                                    tool_calls_map[idx] = {"id": "", "name": "", "arguments": ""}
-                                if tc.id:
-                                    tool_calls_map[idx]["id"] = tc.id
-                                if tc.function:
-                                    if tc.function.name:
-                                        tool_calls_map[idx]["name"] = tc.function.name
-                                    if tc.function.arguments:
-                                        tool_calls_map[idx]["arguments"] += tc.function.arguments
+                    if not chunk.choices:
+                        continue
+                    fr = chunk.choices[0].finish_reason
+                    if fr:
+                        finish_reason = fr
+                    delta = chunk.choices[0].delta
+                    if not delta:
+                        continue
+                    if delta.content:
+                        if verbose:
+                            print(delta.content, end="", flush=True)
+                        collected_text.append(delta.content)
+                        yield {"type": "delta", "text": delta.content}
+                    if delta.tool_calls:
+                        for tc in delta.tool_calls:
+                            idx = tc.index
+                            if idx not in tool_calls_map:
+                                tool_calls_map[idx] = {"id": "", "name": "", "arguments": ""}
+                            if tc.id:
+                                tool_calls_map[idx]["id"] = tc.id
+                            if tc.function:
+                                if tc.function.name:
+                                    tool_calls_map[idx]["name"] = tc.function.name
+                                if tc.function.arguments:
+                                    tool_calls_map[idx]["arguments"] += tc.function.arguments
 
                 if collected_text:
-                    if verbose:
-                        print()
                     final_text = "".join(collected_text)
 
-                if finish_reason == "stop" or not tool_calls_map:
-                    break
-
-                if finish_reason == "tool_calls" and tool_calls_map:
-                    # Build assistant message with tool_calls
+                # 1) Có tool calls → LUÔN thực thi (bất kể finish_reason)
+                if tool_calls_map:
+                    empty_streak = 0
+                    # text vừa stream là "thinking" tạm → báo UI xoá đi
+                    if collected_text:
+                        yield {"type": "clear"}
+                        final_text = ""
                     tool_calls_list = []
                     for idx in sorted(tool_calls_map.keys()):
                         tc = tool_calls_map[idx]
                         tool_calls_list.append({
-                            "id": tc["id"],
-                            "type": "function",
+                            "id": tc["id"], "type": "function",
                             "function": {"name": tc["name"], "arguments": tc["arguments"]},
                         })
-
                     messages.append({
                         "role": "assistant",
                         "content": "".join(collected_text) or None,
                         "tool_calls": tool_calls_list,
                     })
-
-                    # Execute each tool
                     for tc in tool_calls_list:
                         name = tc["function"]["name"]
+                        yield {"type": "status", "msg": TOOL_LABELS.get(name, f"⚙️ {name}…")}
                         try:
                             inp = json.loads(tc["function"]["arguments"])
                         except json.JSONDecodeError:
                             inp = {}
-
-                        short = json.dumps(inp, ensure_ascii=False)[:80]
                         if verbose:
-                            print(f"\n⚙️  {name}({short}…)", flush=True)
-
+                            print(f"\n⚙️  {name}({json.dumps(inp, ensure_ascii=False)[:80]}…)", flush=True)
                         result = _dispatch(name, inp)
                         messages.append({
-                            "role": "tool",
-                            "tool_call_id": tc["id"],
+                            "role": "tool", "tool_call_id": tc["id"],
                             "content": json.dumps(result, ensure_ascii=False, default=str),
                         })
+                    continue
 
-                    if verbose:
-                        print()
+                # 2) Không tool, có text → xong
+                if collected_text:
+                    break
 
-            break  # success — exit retry loop
+                # 3) Turn rỗng — stream hiccup, thử lại vài lần
+                empty_streak += 1
+                if empty_streak >= MAX_EMPTY:
+                    break
+
+            if final_text.strip():
+                break
+            messages = list(base_messages)  # empty → thử fallback
 
         except Exception as e:
-            if attempt == 0:
-                print(f"\n[agent] {primary_model} failed: {e}", file=sys.stderr)
-                # Reset messages for retry with fallback
-                messages = [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_message},
-                ]
-            else:
-                print(f"\n[agent] Fallback also failed: {e}", file=sys.stderr)
+            print(f"\n[agent] {model} failed: {e}", file=sys.stderr)
+            yield {"type": "clear"}
+            final_text = ""
+            messages = list(base_messages)
 
+    if not final_text.strip():
+        final_text = ("Xin lỗi, mình chưa tạo được phản hồi cho yêu cầu này "
+                      "(model trả rỗng). Bạn thử lại hoặc diễn đạt rõ hơn giúp mình nhé.")
+        yield {"type": "delta", "text": final_text}
+    yield {"type": "done", "text": final_text}
+
+
+def run_agent(user_message: str, *, verbose: bool = True,
+              snapshot: Optional[str] = None) -> str:
+    """Non-streaming wrapper — consumes the event stream, returns final text.
+    Dùng cho /invocations, scheduled jobs, insights, CLI."""
+    final_text = ""
+    for ev in run_agent_stream(user_message, verbose=verbose):
+        if ev["type"] == "done":
+            final_text = ev["text"]
     return final_text
 
 
@@ -439,25 +456,25 @@ def _build_user_message(args) -> str:
     if args.jql:
         return (
             f"Gọi tool search_jira với jql='{args.jql}' để lấy danh sách tickets, "
-            f"sau đó gọi run_rule_engine để đánh giá vi phạm QA cho ngày {scan_date}. "
+            f"sau đó gọi run_rule_engine để đánh giá vi phạm QE cho ngày {scan_date}. "
             f"Tổng hợp kết quả rõ ràng bằng tiếng Việt."
         )
     if args.snapshot:
         return (
             f"Gọi tool search_jira với jql='project=GE' và snapshot_file='{args.snapshot}' "
-            f"để lấy danh sách tickets, sau đó gọi run_rule_engine để đánh giá vi phạm QA "
+            f"để lấy danh sách tickets, sau đó gọi run_rule_engine để đánh giá vi phạm QE "
             f"cho ngày {scan_date}. Tổng hợp kết quả rõ ràng bằng tiếng Việt."
         )
     default_snap = os.path.join(_SCRIPT_DIR, "ge_sprint_snapshot.json")
     if os.path.exists(default_snap):
         return (
             f"Gọi tool search_jira với jql='project=GE' và snapshot_file='{default_snap}' "
-            f"để lấy danh sách tickets, sau đó gọi run_rule_engine để đánh giá vi phạm QA "
+            f"để lấy danh sách tickets, sau đó gọi run_rule_engine để đánh giá vi phạm QE "
             f"cho ngày {scan_date}. Tổng hợp kết quả rõ ràng bằng tiếng Việt."
         )
     return (
         f"Gọi tool search_jira với jql='{SCAN_JQL}' để lấy danh sách tickets, "
-        f"sau đó gọi run_rule_engine để đánh giá vi phạm QA cho ngày {scan_date}. "
+        f"sau đó gọi run_rule_engine để đánh giá vi phạm QE cho ngày {scan_date}. "
         f"Tổng hợp kết quả rõ ràng bằng tiếng Việt."
     )
 
@@ -469,7 +486,7 @@ def _inject_snapshot_hint(msg: str, snapshot: Optional[str]) -> str:
 
 
 def main():
-    ap = argparse.ArgumentParser(description="QA Watchdog — GreenNode LLM Agent")
+    ap = argparse.ArgumentParser(description="QE Watchdog — GreenNode LLM Agent")
     src = ap.add_mutually_exclusive_group()
     src.add_argument("--live", action="store_true", help="Fetch Jira REST thật")
     src.add_argument("--snapshot", metavar="FILE", help="Đọc từ snapshot JSON")
@@ -492,7 +509,7 @@ def main():
         sys.exit(1)
 
     if args.repl:
-        print("QA Watchdog Agent — REPL mode (Ctrl+C hoặc 'quit' để thoát)")
+        print("QE Watchdog Agent — REPL mode (Ctrl+C hoặc 'quit' để thoát)")
         print(f"Models: agent={AGENT_MODEL} | checklist={CHECKLIST_MODEL} | fallback={FALLBACK_MODEL}\n")
         while True:
             try:

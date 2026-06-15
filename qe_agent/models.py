@@ -10,7 +10,7 @@ from typing import Optional
 
 
 # ---------------------------------------------------------------------------
-# STATUS GROUPS  (workflow ZaloPay — dùng chung Person 1 & 2, so lower-case)
+# STATUS GROUPS  (workflow Zalopay — dùng chung Person 1 & 2, so lower-case)
 # Full flow: NEW > REVIEWED > IN ANALYSIS > READY FOR DEV > IN DEV >
 #            WALKTHROUGH > READY FOR TESTING > IN TEST > IN REVIEW > DONE > LIVE
 #            + BLOCKED / ON HOLD, CANCELLED (nhánh riêng)

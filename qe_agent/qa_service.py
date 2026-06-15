@@ -33,7 +33,7 @@ try:  # pragma: no cover
     from .rule_engine import RuleEngine, run as run_rules
     from .models import Ticket, DailyReport, CH_QE, CH_DEV_MS, CH_DEV_CRM
     from . import teams_sender
-    from .claude_agent import run_agent
+    from .claude_agent import run_agent, run_agent_stream, _is_checklist_request
     from . import webstore
 except ImportError:  # pragma: no cover
     import sys
@@ -42,7 +42,7 @@ except ImportError:  # pragma: no cover
     from rule_engine import RuleEngine, run as run_rules
     from models import Ticket, DailyReport, CH_QE, CH_DEV_MS, CH_DEV_CRM
     import teams_sender
-    from claude_agent import run_agent
+    from claude_agent import run_agent, run_agent_stream, _is_checklist_request
     import webstore
 
 
@@ -318,10 +318,10 @@ def get_insights(question: Optional[str] = None, record: bool = True) -> dict:
     try:
         data = history_summary()
         ctx = json.dumps(data, ensure_ascii=False, indent=2, default=str)
-        q = question or ("Phân tích dữ liệu lịch sử vi phạm QA bên dưới. Nêu rõ: "
+        q = question or ("Phân tích dữ liệu lịch sử vi phạm QE bên dưới. Nêu rõ: "
                          "(1) xu hướng theo thời gian, (2) rủi ro nổi bật & repeat offender, "
-                         "(3) rule/QE PIC nào đáng chú ý, (4) đề xuất cải thiện quy trình QA cụ thể.")
-        msg = (f"{q}\n\nDưới đây là dữ liệu thống kê vi phạm QA lịch sử (JSON). "
+                         "(3) rule/QE PIC nào đáng chú ý, (4) đề xuất cải thiện quy trình QE cụ thể.")
+        msg = (f"{q}\n\nDưới đây là dữ liệu thống kê vi phạm QE lịch sử (JSON). "
                f"Hãy phân tích trực tiếp dữ liệu này, KHÔNG cần gọi tool:\n\n{ctx}")
         text = run_agent(msg, verbose=False)
         status = "pass" if text else "warn"
@@ -366,7 +366,7 @@ def seed_demo_data() -> bool:
         pass
     # a sample daily schedule
     try:
-        webstore.add_schedule("Daily QA scan 9h", 9, 0, "mon-fri",
+        webstore.add_schedule("Daily QE scan 9h", 9, 0, "mon-fri",
                               "scan", "snapshot", snap, None)
     except Exception:
         pass
@@ -374,6 +374,89 @@ def seed_demo_data() -> bool:
 
 
 # ---------------------------------------------------------------- chat
+_STATUS_KEYWORDS = [
+    "vi phạm", "violation", "level", "trạng thái", "status", "scan", "sprint",
+    "quá hạn", "overdue", "ticket nào", "report", "tổng quan", "tình trạng", "vi pham",
+]
+# Insights = phân tích dữ liệu LỊCH SỬ (tích hợp tab Insights vào Chat)
+_INSIGHT_KEYWORDS = [
+    "insight", "xu hướng", "xu huong", "trend", "rủi ro", "rui ro", "cải thiện",
+    "cai thien", "repeat", "tái phạm", "tai pham", "thống kê", "thong ke",
+    "lịch sử vi phạm", "phân tích lịch sử", "offender",
+]
+
+
+def _augment_for_speed(message: str, source: str, snapshot_file: Optional[str]):
+    """Part B — giảm round-trip + tích hợp Insights vào Chat.
+    Nhúng sẵn dữ liệu vào prompt để model trả lời trong 1 lượt (không gọi tool).
+    Trả (augmented_message, used_precompute: bool)."""
+    low = message.lower()
+    if _is_checklist_request(message):
+        return message, False               # checklist cần get_ticket_detail riêng
+
+    # 1) Insights — phân tích lịch sử vi phạm (độc lập source, đọc DB)
+    if any(k in low for k in _INSIGHT_KEYWORDS):
+        try:
+            data = history_summary()
+        except Exception:
+            return message, False
+        aug = (message + "\n\n[DỮ LIỆU THỐNG KÊ VI PHẠM QE LỊCH SỬ — phân tích trực "
+               "tiếp, KHÔNG gọi tool. Hãy nêu: (1) xu hướng theo thời gian, "
+               "(2) rủi ro nổi bật & repeat offender, (3) rule/QE PIC đáng chú ý, "
+               "(4) đề xuất cải thiện quy trình QE]:\n"
+               + json.dumps(data, ensure_ascii=False, default=str))
+        return aug, True
+
+    # 2) Status/violation — chạy sẵn rule engine trên snapshot
+    if source != "snapshot" or not snapshot_file:
+        return message, False
+    if not any(k in low for k in _STATUS_KEYWORDS):
+        return message, False
+    try:
+        res = run_scan(source="snapshot", snapshot_file=snapshot_file, record=False)
+    except Exception:
+        return message, False
+    ctx = {
+        "scan_date": res["scan_date"],
+        "ticket_count": res["ticket_count"],
+        "counts": res["counts"],
+        "violations": res["by_level"],
+    }
+    aug = (message + "\n\n[DỮ LIỆU ĐÃ CÓ SẴN — KHÔNG cần gọi search_jira hay "
+           "run_rule_engine, hãy trả lời trực tiếp từ dữ liệu vi phạm QE dưới đây]:\n"
+           + json.dumps(ctx, ensure_ascii=False, default=str))
+    return aug, True
+
+
+def chat_stream(message: str, source: str = "snapshot",
+                snapshot_file: Optional[str] = None):
+    """Streaming chat — yields events {type: status|clear|delta|done} và ghi task
+    history khi kết thúc."""
+    task_id = webstore.create_task(
+        "chat", source, {"message": message[:200], "snapshot_file": snapshot_file})
+    msg = message
+    if source != "live" and snapshot_file and "snapshot_file" not in msg:
+        abspath = _snapshot_path(snapshot_file)
+        msg = msg + f"\n\n(Dùng snapshot_file='{abspath}' khi gọi search_jira / get_ticket_detail)"
+    msg, _fast = _augment_for_speed(msg, source, snapshot_file)
+
+    full = ""
+    try:
+        for ev in run_agent_stream(msg, verbose=False):
+            if ev["type"] == "delta":
+                full += ev["text"]
+            elif ev["type"] == "clear":
+                full = ""
+            elif ev["type"] == "done":
+                full = ev["text"] or full
+            yield ev
+        status = "pass" if full.strip() else "warn"
+        webstore.finish_task(task_id, status, (full or "")[:160], {"reply": full})
+    except Exception as e:
+        webstore.finish_task(task_id, "fail", f"Chat lỗi: {e}", {"error": str(e)})
+        yield {"type": "done", "text": f"Lỗi: {e}"}
+
+
 def chat(message: str, source: str = "snapshot", snapshot_file: Optional[str] = None,
          record: bool = True) -> dict:
     task_id = None

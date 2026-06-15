@@ -1,5 +1,5 @@
 """
-QA Watchdog Agent — HTTP server + demo UI for AgentBase Runtime.
+QE Watchdog Agent — HTTP server + demo UI for AgentBase Runtime.
 
 Endpoints
   GET  /                 → the chatbot demo UI (single-page app)
@@ -20,6 +20,7 @@ Endpoints
 """
 import os
 import sys
+import json
 import threading
 from functools import partial
 from contextlib import asynccontextmanager
@@ -39,7 +40,7 @@ if _env.exists():
             os.environ.setdefault(_k.strip(), _v.strip().strip('"').strip("'"))
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, HTMLResponse, FileResponse
+from fastapi.responses import JSONResponse, HTMLResponse, FileResponse, StreamingResponse
 from fastapi.concurrency import run_in_threadpool
 import uvicorn
 
@@ -130,7 +131,7 @@ async def lifespan(app: FastAPI):
         _scheduler.shutdown(wait=False)
 
 
-app = FastAPI(title="QA Watchdog Agent", version="2.0.0", lifespan=lifespan)
+app = FastAPI(title="QE Watchdog Agent", version="2.0.0", lifespan=lifespan)
 
 
 # ---------------------------------------------------------------- UI + health
@@ -139,7 +140,7 @@ def index():
     ui = os.path.join(_DIR, "ui", "index.html")
     if os.path.exists(ui):
         return FileResponse(ui)
-    return HTMLResponse("<h1>QA Watchdog</h1><p>UI not found.</p>")
+    return HTMLResponse("<h1>QE Watchdog</h1><p>UI not found.</p>")
 
 
 @app.get("/health")
@@ -186,9 +187,22 @@ async def api_chat(request: Request):
     msg = body.get("message", "").strip()
     if not msg:
         return JSONResponse({"error": "message required"}, status_code=400)
-    return await run_in_threadpool(
-        qa_service.chat, msg, body.get("source", "snapshot"),
-        body.get("snapshot_file"))
+    source = body.get("source", "snapshot")
+    snap = body.get("snapshot_file")
+
+    def sse():
+        # sync generator → Starlette iterates it in a threadpool (event loop stays free)
+        try:
+            for ev in qa_service.chat_stream(msg, source, snap):
+                yield "data: " + json.dumps(ev, ensure_ascii=False) + "\n\n"
+        except Exception as e:  # pragma: no cover
+            yield "data: " + json.dumps({"type": "done", "text": f"Lỗi: {e}"}) + "\n\n"
+
+    return StreamingResponse(sse(), media_type="text/event-stream", headers={
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",   # tránh ingress buffer SSE
+    })
 
 
 @app.post("/api/scan")
