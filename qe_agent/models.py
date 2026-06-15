@@ -94,6 +94,7 @@ class RuleResult:
     level: Level
     ticket: Ticket
     reason: str                              # short human text shown in card
+    rule_name: str = ""                      # tên rule (hiển thị thay rule_id)
     # "gửi đâu": Person 2 set theo mindmap. CH_QE và/hoặc dev (dùng "dev"
     # nghĩa là theo component MS/CRM). Person 1 expand "dev" -> dev_ms/dev_crm.
     send_qe: bool = True                     # gửi QE daily channel?

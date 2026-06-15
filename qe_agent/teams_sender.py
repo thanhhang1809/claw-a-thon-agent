@@ -107,7 +107,7 @@ def route(report: DailyReport) -> dict[str, list]:
             else:
                 chans = ([CH_QE] if r.send_qe else []) + \
                         (dev_channels_for(r.ticket.component) if r.send_dev else [])
-            add(chans, lvl, r.rule_id, r.rule_id, r.ticket, r.reason)
+            add(chans, lvl, r.rule_id, r.rule_name or r.rule_id, r.ticket, r.reason)
 
     # Flatten -> sort theo level, rồi rule_id
     out: dict[str, list] = {}
@@ -135,9 +135,7 @@ def _ticket_link(t: Ticket) -> str:
 
 
 def _rule_table(group: dict) -> str:
-    """Một rule = 1 bảng: Ticket | Status | Assignee | QE PIC | Chi tiết."""
-    level = group["level"]
-    dot = LEVEL_DOT.get(level, "⚪")
+    """Một rule = 1 bảng: Ticket | Status | Assignee | QE PIC."""
     th = ('style="text-align:left;padding:6px 10px;font-size:11px;color:#666;'
           'background:#f0f0f0;border-bottom:1px solid #ddd;white-space:nowrap"')
     td = 'style="padding:6px 10px;font-size:13px;border-bottom:1px solid #eee;vertical-align:top"'
@@ -145,35 +143,25 @@ def _rule_table(group: dict) -> str:
     rows_html = ""
     for row in group["rows"]:
         t = row["ticket"]
-        reasons = row["reasons"]
-        if not reasons:
-            detail = "—"
-        elif len(reasons) == 1:
-            detail = f"{dot} {reasons[0]}"
-        else:
-            detail = f"{dot} " + "<br>".join(
-                f"{i}. {r}" for i, r in enumerate(reasons, 1))
         rows_html += (
             f'<tr>'
             f'<td {td}>{_ticket_link(t)}'
-            f'<div style="font-size:11px;color:#777;margin-top:2px;max-width:200px">{t.title or ""}</div></td>'
+            f'<div style="font-size:11px;color:#777;margin-top:2px;max-width:260px">{t.title or ""}</div></td>'
             f'<td {td}><span style="font-size:12px;color:#555">{t.status or "—"}</span></td>'
             f'<td {td}>{t.assignee or "—"}{" <b style=color:#d32f2f>[NoQE]</b>" if t.no_qe else ""}</td>'
             f'<td {td}>{t.qe_pic or "—"}</td>'
-            f'<td {td}>{detail}</td>'
             f'</tr>'
         )
 
     n = len(group["rows"])
-    # nhóm checklist (level -1) hiện label; nhóm rule hiện rule_id
-    heading = group["label"] if group["level"] == -1 else group["rule_id"]
+    heading = group["label"]  # checklist: nhãn; rule: rule_name (fallback rule_id)
     return (
         f'<div style="font-size:12px;color:#444;font-weight:600;margin:10px 0 4px">'
         f'{heading} <span style="color:#999;font-weight:400">({n} ticket)</span></div>'
         f'<table style="border-collapse:collapse;width:100%;background:#fff;'
         f'border:1px solid #e0e0e0;border-radius:4px;overflow:hidden">'
         f'<tr><th {th}>Ticket</th><th {th}>Status</th><th {th}>Assignee</th>'
-        f'<th {th}>QE PIC</th><th {th} style="width:50%">Chi tiết</th></tr>'
+        f'<th {th}>QE PIC</th></tr>'
         f'{rows_html}</table>'
     )
 
@@ -272,15 +260,12 @@ def render_text(report: DailyReport) -> str:
                 total = sum(len(x["rows"]) for x in groups if x["level"] == cur_level)
                 suffix = "ticket" if cur_level == -1 else "vi phạm"
                 out.append(f"\n{LEVEL_NAME.get(cur_level,'?')} — {total} {suffix}")
-            out.append(f"  [{g['rule_id']}]  ({len(g['rows'])} ticket)")
+            out.append(f"  [{g['label']}]  ({len(g['rows'])} ticket)")
             for row in g["rows"]:
                 t = row["ticket"]
                 out.append(f"    {t.id:12} {(t.title or '')[:45]}")
                 out.append(f"    {'':12} status={t.status or '—':18} "
                            f"assignee={t.assignee or '—':10} QE={t.qe_pic or '—'}")
-                for i, r in enumerate(row["reasons"], 1):
-                    pfx = f"      {i}." if len(row["reasons"]) > 1 else "      →"
-                    out.append(f"{pfx} {r}")
         out.append("")
     return "\n".join(out)
 
