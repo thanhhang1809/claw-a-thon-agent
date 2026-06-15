@@ -2,3 +2,4 @@ requests
 apscheduler
 pyyaml
 anthropic
+openai
