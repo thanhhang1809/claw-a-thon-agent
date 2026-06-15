@@ -1,0 +1,20 @@
+# Secrets
+.env
+
+# Generated files
+*.db
+report.html
+result.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# IDE
+.vscode/
+.claude/
+.specstory/
+.cursorindexingignore

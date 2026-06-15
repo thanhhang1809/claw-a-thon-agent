@@ -1,0 +1,53 @@
+{
+  "scan_date": "2026-06-16",
+  "_date_note": "workdays_add(2026-06-16, -2) = 2026-06-12 (Friday, skipping weekend)",
+  "rule": "L2_DUE_2DAYS_AGO_SP8_NOT_TESTING",
+  "jql": "DEMO — run: python3 agent.py --snapshot demo/L2_DUE_2DAYS_AGO_SP8_NOT_TESTING.json --date 2026-06-16 --html demo/report_L2_sp8_2days.html",
+  "issues": [
+    {
+      "_case": "FIRES — test_complete_date=2026-06-12 (2 workdays ago), SP=8, status=In Dev",
+      "key": "MOCK-L2C-001",
+      "summary": "[DEMO] L2_SP8_2DAYS: overdue 2 days, SP=8, still In Dev",
+      "status": {"name": "In Dev"},
+      "issue_type": {"name": "Story"},
+      "assignee": {"name": "devuser", "display_name": "Dev User"},
+      "labels": ["qeuser"],
+      "customfield_10801": {"value": 8.0},
+      "customfield_13703": {"value": "2026-06-09"},
+      "customfield_13704": {"value": "2026-06-12"},
+      "customfield_11702": {"value": "2026-06-06"},
+      "customfield_10418": {"value": "qeuser"},
+      "customfield_13711": {"value": "Demo"}
+    },
+    {
+      "_case": "DOES NOT FIRE — test_complete_date=2026-06-12, SP=5 (wrong SP for this rule)",
+      "key": "MOCK-L2C-OK1",
+      "summary": "[DEMO] L2_SP8_2DAYS: overdue 2 days, SP=5 (no violation — wrong SP)",
+      "status": {"name": "In Dev"},
+      "issue_type": {"name": "Story"},
+      "assignee": {"name": "devuser", "display_name": "Dev User"},
+      "labels": ["qeuser"],
+      "customfield_10801": {"value": 5.0},
+      "customfield_13703": {"value": "2026-06-09"},
+      "customfield_13704": {"value": "2026-06-12"},
+      "customfield_11702": {"value": "2026-06-06"},
+      "customfield_10418": {"value": "qeuser"},
+      "customfield_13711": {"value": "Demo"}
+    },
+    {
+      "_case": "DOES NOT FIRE — test_complete_date=2026-06-12, SP=8, status=In Test (already testing)",
+      "key": "MOCK-L2C-OK2",
+      "summary": "[DEMO] L2_SP8_2DAYS: overdue 2 days, SP=8, In Test (no violation)",
+      "status": {"name": "In Test"},
+      "issue_type": {"name": "Story"},
+      "assignee": {"name": "devuser", "display_name": "Dev User"},
+      "labels": ["qeuser"],
+      "customfield_10801": {"value": 8.0},
+      "customfield_13703": {"value": "2026-06-09"},
+      "customfield_13704": {"value": "2026-06-12"},
+      "customfield_11702": {"value": "2026-06-06"},
+      "customfield_10418": {"value": "qeuser"},
+      "customfield_13711": {"value": "Demo"}
+    }
+  ]
+}
