@@ -1,0 +1,67 @@
+{
+  "scan_date": "2026-06-16",
+  "rule": "L2_DUE_TODAY_SP3_NOT_TESTING",
+  "jql": "DEMO — run: python3 agent.py --snapshot demo/L2_DUE_TODAY_SP3_NOT_TESTING.json --date 2026-06-16 --html demo/report_L2_sp3today.html",
+  "issues": [
+    {
+      "_case": "FIRES — test_complete_date=today, SP=3, status=In Dev",
+      "key": "MOCK-L2A-001",
+      "summary": "[DEMO] L2_SP3_TODAY: due today, SP=3, still In Dev",
+      "status": {"name": "In Dev"},
+      "issue_type": {"name": "Story"},
+      "assignee": {"name": "devuser", "display_name": "Dev User"},
+      "labels": ["qeuser"],
+      "customfield_10801": {"value": 3.0},
+      "customfield_13703": {"value": "2026-06-15"},
+      "customfield_13704": {"value": "2026-06-16"},
+      "customfield_11702": {"value": "2026-06-12"},
+      "customfield_10418": {"value": "qeuser"},
+      "customfield_13711": {"value": "Demo"}
+    },
+    {
+      "_case": "FIRES — test_complete_date=today, SP=3, status=New",
+      "key": "MOCK-L2A-002",
+      "summary": "[DEMO] L2_SP3_TODAY: due today, SP=3, still New",
+      "status": {"name": "New"},
+      "issue_type": {"name": "Story"},
+      "assignee": {"name": "devuser", "display_name": "Dev User"},
+      "labels": ["qeuser"],
+      "customfield_10801": {"value": 3.0},
+      "customfield_13703": {"value": "2026-06-15"},
+      "customfield_13704": {"value": "2026-06-16"},
+      "customfield_11702": {"value": "2026-06-12"},
+      "customfield_10418": {"value": "qeuser"},
+      "customfield_13711": {"value": "Demo"}
+    },
+    {
+      "_case": "DOES NOT FIRE — due today, SP=3, status=In Test (already testing)",
+      "key": "MOCK-L2A-OK1",
+      "summary": "[DEMO] L2_SP3_TODAY: due today, SP=3, In Test (no violation)",
+      "status": {"name": "In Test"},
+      "issue_type": {"name": "Story"},
+      "assignee": {"name": "devuser", "display_name": "Dev User"},
+      "labels": ["qeuser"],
+      "customfield_10801": {"value": 3.0},
+      "customfield_13703": {"value": "2026-06-15"},
+      "customfield_13704": {"value": "2026-06-16"},
+      "customfield_11702": {"value": "2026-06-12"},
+      "customfield_10418": {"value": "qeuser"},
+      "customfield_13711": {"value": "Demo"}
+    },
+    {
+      "_case": "DOES NOT FIRE — due today, SP=5 (wrong SP for this rule), status=In Dev",
+      "key": "MOCK-L2A-OK2",
+      "summary": "[DEMO] L2_SP3_TODAY: due today, SP=5, In Dev (no L2A violation — SP mismatch)",
+      "status": {"name": "In Dev"},
+      "issue_type": {"name": "Story"},
+      "assignee": {"name": "devuser", "display_name": "Dev User"},
+      "labels": ["qeuser"],
+      "customfield_10801": {"value": 5.0},
+      "customfield_13703": {"value": "2026-06-15"},
+      "customfield_13704": {"value": "2026-06-16"},
+      "customfield_11702": {"value": "2026-06-12"},
+      "customfield_10418": {"value": "qeuser"},
+      "customfield_13711": {"value": "Demo"}
+    }
+  ]
+}

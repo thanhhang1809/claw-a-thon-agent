@@ -1,0 +1,52 @@
+{
+  "scan_date": "2026-06-16",
+  "rule": "L2_OVERDUE_STILL_INREVIEW",
+  "jql": "DEMO — run: python3 agent.py --snapshot demo/L2_OVERDUE_STILL_INREVIEW.json --date 2026-06-16 --html demo/report_L2_inreview.html",
+  "issues": [
+    {
+      "_case": "FIRES — test_complete_date=2026-06-15 (<today), status=In Review",
+      "key": "MOCK-L2R-001",
+      "summary": "[DEMO] L2_INREVIEW: past due by 1 day, still In Review",
+      "status": {"name": "In Review"},
+      "issue_type": {"name": "Story"},
+      "assignee": {"name": "devuser", "display_name": "Dev User"},
+      "labels": ["qeuser"],
+      "customfield_10801": {"value": 3.0},
+      "customfield_13703": {"value": "2026-06-12"},
+      "customfield_13704": {"value": "2026-06-15"},
+      "customfield_11702": {"value": "2026-06-11"},
+      "customfield_10418": {"value": "qeuser"},
+      "customfield_13711": {"value": "Demo"}
+    },
+    {
+      "_case": "DOES NOT FIRE — test_complete_date=today(2026-06-16), status=In Review (not overdue yet)",
+      "key": "MOCK-L2R-OK1",
+      "summary": "[DEMO] L2_INREVIEW: due today, In Review (no violation)",
+      "status": {"name": "In Review"},
+      "issue_type": {"name": "Story"},
+      "assignee": {"name": "devuser", "display_name": "Dev User"},
+      "labels": ["qeuser"],
+      "customfield_10801": {"value": 3.0},
+      "customfield_13703": {"value": "2026-06-12"},
+      "customfield_13704": {"value": "2026-06-16"},
+      "customfield_11702": {"value": "2026-06-11"},
+      "customfield_10418": {"value": "qeuser"},
+      "customfield_13711": {"value": "Demo"}
+    },
+    {
+      "_case": "DOES NOT FIRE — test_complete_date=2026-06-15 (<today), status=In Dev (caught by L1_TEST_COMPLETE_OVERDUE instead)",
+      "key": "MOCK-L2R-OK2",
+      "summary": "[DEMO] L2_INREVIEW: past due, still In Dev (no L2 violation — L1 fires instead)",
+      "status": {"name": "In Dev"},
+      "issue_type": {"name": "Story"},
+      "assignee": {"name": "devuser", "display_name": "Dev User"},
+      "labels": ["qeuser"],
+      "customfield_10801": {"value": 3.0},
+      "customfield_13703": {"value": "2026-06-12"},
+      "customfield_13704": {"value": "2026-06-15"},
+      "customfield_11702": {"value": "2026-06-11"},
+      "customfield_10418": {"value": "qeuser"},
+      "customfield_13711": {"value": "Demo"}
+    }
+  ]
+}

@@ -1,0 +1,67 @@
+{
+  "scan_date": "2026-06-16",
+  "rule": "L1_SANDBOX_DATE_WRONG_STATUS",
+  "jql": "DEMO — run: python3 agent.py --snapshot demo/L1_SANDBOX_DATE_WRONG_STATUS.json --date 2026-06-16 --html demo/report_L1_sandbox.html",
+  "issues": [
+    {
+      "_case": "FIRES — sandbox_date=today(2026-06-16), status=In Dev",
+      "key": "MOCK-L1B-001",
+      "summary": "[DEMO] L1_SANDBOX: sandbox today, still In Dev",
+      "status": {"name": "In Dev"},
+      "issue_type": {"name": "Story"},
+      "assignee": {"name": "devuser", "display_name": "Dev User"},
+      "labels": ["qeuser"],
+      "customfield_10801": {"value": 5.0},
+      "customfield_13703": {"value": "2026-06-18"},
+      "customfield_13704": {"value": "2026-06-20"},
+      "customfield_11702": {"value": "2026-06-16"},
+      "customfield_10418": {"value": "qeuser"},
+      "customfield_13711": {"value": "Demo"}
+    },
+    {
+      "_case": "FIRES — sandbox_date=today, status=New",
+      "key": "MOCK-L1B-002",
+      "summary": "[DEMO] L1_SANDBOX: sandbox today, still New",
+      "status": {"name": "New"},
+      "issue_type": {"name": "Story"},
+      "assignee": {"name": "devuser", "display_name": "Dev User"},
+      "labels": ["qeuser"],
+      "customfield_10801": {"value": 3.0},
+      "customfield_13703": {"value": "2026-06-18"},
+      "customfield_13704": {"value": "2026-06-20"},
+      "customfield_11702": {"value": "2026-06-16"},
+      "customfield_10418": {"value": "qeuser"},
+      "customfield_13711": {"value": "Demo"}
+    },
+    {
+      "_case": "DOES NOT FIRE — sandbox_date=today, status=Walkthrough (correct status)",
+      "key": "MOCK-L1B-OK1",
+      "summary": "[DEMO] L1_SANDBOX: sandbox today, Walkthrough (no violation)",
+      "status": {"name": "Walkthrough"},
+      "issue_type": {"name": "Story"},
+      "assignee": {"name": "devuser", "display_name": "Dev User"},
+      "labels": ["qeuser"],
+      "customfield_10801": {"value": 3.0},
+      "customfield_13703": {"value": "2026-06-18"},
+      "customfield_13704": {"value": "2026-06-20"},
+      "customfield_11702": {"value": "2026-06-16"},
+      "customfield_10418": {"value": "qeuser"},
+      "customfield_13711": {"value": "Demo"}
+    },
+    {
+      "_case": "DOES NOT FIRE — sandbox_date=today, status=Ready for testing (correct status)",
+      "key": "MOCK-L1B-OK2",
+      "summary": "[DEMO] L1_SANDBOX: sandbox today, Ready for testing (no violation)",
+      "status": {"name": "Ready for testing"},
+      "issue_type": {"name": "Story"},
+      "assignee": {"name": "devuser", "display_name": "Dev User"},
+      "labels": ["qeuser"],
+      "customfield_10801": {"value": 3.0},
+      "customfield_13703": {"value": "2026-06-18"},
+      "customfield_13704": {"value": "2026-06-20"},
+      "customfield_11702": {"value": "2026-06-16"},
+      "customfield_10418": {"value": "qeuser"},
+      "customfield_13711": {"value": "Demo"}
+    }
+  ]
+}

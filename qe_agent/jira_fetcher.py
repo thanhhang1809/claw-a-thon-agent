@@ -9,15 +9,45 @@ Set env vars:
 from __future__ import annotations
 import os
 import re
+import urllib3
 from datetime import date, datetime
 from typing import Optional
 import requests
 from .models import Ticket, STATUS_BLOCKED
 
-# Lọc loại issue. Giữ Story, Task, Bug.
-ISSUETYPE_CLAUSE = os.getenv("JIRA_ISSUETYPE_CLAUSE", "issuetype in (Story, Task, Bug)")
+# Load .env từ thư mục cha (project root)
+_env_file = os.path.join(os.path.dirname(__file__), "..", ".env")
+if os.path.exists(_env_file):
+    for _ln in open(_env_file, encoding="utf-8"):
+        _ln = _ln.strip()
+        if _ln and not _ln.startswith("#") and "=" in _ln:
+            _k, _v = _ln.split("=", 1)
+            os.environ.setdefault(_k.strip(), _v.strip().strip('"').strip("'"))
 
-# JQL filter theo roadmap. Sửa cho đúng project/board của bạn.
+# Jira nội bộ dùng self-signed cert → tắt SSL verify
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+# Normalize status name từ Jira về canonical name
+_STATUS_MAP: dict[str, str] = {
+    "in dev": "InDev", "in development": "InDev",
+    "in test": "InTest", "in testing": "InTest",
+    "in review": "InReview",
+    "ready for testing": "Ready for testing",
+    "in analysis": "In Analysis",
+    "done": "Done", "resolved": "Resolved",
+    "cancelled": "Cancelled", "canceled": "Cancelled",
+    "live": "Live",
+    "blocked": "Blocked", "blocked / on hold": "Blocked / On Hold", "on hold": "On Hold",
+    "new": "New", "open": "Open", "backlog": "Backlog",
+    "walkthrough": "Walkthrough", "reviewed": "Reviewed",
+    "in progress": "In Progress",
+}
+
+
+def _norm_status(raw: str) -> str:
+    return _STATUS_MAP.get(raw.lower().strip(), raw)
+
+# JQL filter theo roadmap, gồm bug. Sửa cho đúng project/board của bạn.
 ROADMAP_JQL = os.getenv(
     "JIRA_JQL",
     f'project = GE AND {ISSUETYPE_CLAUSE} ORDER BY created DESC'
@@ -59,7 +89,7 @@ def _search(jql: str) -> list[Ticket]:
             f"{_base()}/rest/api/2/search",
             params={"jql": jql, "startAt": start_at,
                     "maxResults": page, "fields": ",".join(FETCH_FIELDS)},
-            headers=_headers(), timeout=30,
+            headers=_headers(), timeout=30, verify=False,
         )
         resp.raise_for_status()
         data = resp.json()
@@ -123,7 +153,7 @@ def list_active_sprints(board_id: str | int) -> list[dict]:
     Trả [{id, name, state, startDate, endDate}, ...]."""
     resp = requests.get(
         f"{_base()}/rest/agile/1.0/board/{board_id}/sprint",
-        params={"state": "active"}, headers=_headers(), timeout=30,
+        params={"state": "active"}, headers=_headers(), timeout=30, verify=False,
     )
     resp.raise_for_status()
     out = []
@@ -149,7 +179,7 @@ def list_boards_for_project(project_key: str) -> list[dict]:
         resp = requests.get(
             f"{_base()}/rest/agile/1.0/board",
             params={"projectKeyOrId": project_key, "startAt": start, "maxResults": 50},
-            headers=_headers(), timeout=30,
+            headers=_headers(), timeout=30, verify=False,
         )
         resp.raise_for_status()
         data = resp.json()
@@ -181,7 +211,9 @@ def fetch_active_sprint(project_key: str, team: str | None = None) -> list[Ticke
         return []
     id_list = ",".join(str(i) for i in ids)
     jql = (f"project = {project_key} AND sprint in ({id_list}) "
-           f"AND {ISSUETYPE_CLAUSE} ORDER BY created DESC")
+           f"AND (issuetype in (Story, Task) OR "
+           f"(issuetype = Bug AND (cf[13800] = \"Production\" OR labels = \"BUG_LEAK\"))) "
+           f"ORDER BY created DESC")
     tickets = _search(jql)
     if team:
         from .models import ticket_in_team_sprint
@@ -228,17 +260,28 @@ def _user(v):
 
 
 # Label đánh dấu NoQE (khớp nhiều biến thể, so sánh lower-case).
-NOQE_LABELS = {"noqe", "no_qe"}
+NOQE_LABELS = {"noqe", "no_qe", "noqc", "no_qc"}
+
+# Username QE team — dùng để fallback qe_pic từ label khi QC PIC field trống.
+QE_USERNAMES = {"hangdtt4", "annhg", "anhldh", "quantm6"}
 
 
 def _normalize(issue: dict) -> Ticket:
     f = issue["fields"]
     def cf(key):
         return f.get(FIELD_MAP[key]) if key in FIELD_MAP else None
-    status_name = (f.get("status") or {}).get("name", "")
+    status_name = _norm_status((f.get("status") or {}).get("name", ""))
     assignee_name, assignee_user = _user(f.get("assignee"))
     qe_name, qe_user = _user(cf("qe_pic"))
     labels = [l.lower() for l in (f.get("labels", []) or [])]
+
+    # Fallback: nếu QC PIC field trống, lấy tất cả username khớp từ label
+    if not qe_name:
+        matched = [lbl for lbl in labels if lbl in QE_USERNAMES]
+        if matched:
+            qe_name = ", ".join(matched)
+            qe_user = matched[0]
+
     comps = f.get("components", []) or []
     component = comps[0].get("name") if comps else None
     return Ticket(

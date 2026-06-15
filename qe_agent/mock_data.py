@@ -69,17 +69,17 @@ def generate_mock_tickets() -> list[Ticket]:
         Ticket("GE-4102", "Due today SP3 #2", "Ready for testing", 3,
                wd(1), TODAY, wd(2), "peter", qe_pic="qe_eve", component=MS),
 
-        # ── L2_DUE_1DAY_AGO_SP5 (2) ──
-        Ticket("GE-4201", "Quá 1 ngày SP5 #1", "Ready for testing", 5,
-               wd(1), wd(-1), wd(2), "quinn", qe_pic="qe_eve", component=MS),
-        Ticket("GE-4202", "Quá 1 ngày SP5 #2", "Walkthrough", 5,
-               wd(1), wd(-1), wd(2), "rita", qe_pic="qe_bob", component=CRM),
+        # ── L2_DUE_1DAY_LEFT_SP5 (2) ──
+        Ticket("GE-4201", "Còn 1 ngày SP5 #1", "Ready for testing", 5,
+               wd(-1), wd(1), wd(3), "quinn", qe_pic="qe_eve", component=MS),
+        Ticket("GE-4202", "Còn 1 ngày SP5 #2", "Walkthrough", 5,
+               wd(-1), wd(1), wd(3), "rita", qe_pic="qe_bob", component=CRM),
 
-        # ── L2_DUE_2DAYS_AGO_SP8 (2) ──
-        Ticket("GE-4301", "Quá 2 ngày SP8 #1", "InTest", 8,
-               wd(-5), wd(-2), wd(1), "sam", qe_pic="qe_bob", component=CRM),
-        Ticket("GE-4302", "Quá 2 ngày SP8 #2", "Ready for testing", 8,
-               wd(1), wd(-2), wd(1), "tina", qe_pic="qe_eve", component=MS),
+        # ── L2_DUE_2DAYS_LEFT_SP8 (2) ──
+        Ticket("GE-4301", "Còn 2 ngày SP8 #1", "InTest", 8,
+               wd(-3), wd(2), wd(4), "sam", qe_pic="qe_bob", component=CRM),
+        Ticket("GE-4302", "Còn 2 ngày SP8 #2", "Ready for testing", 8,
+               wd(-2), wd(2), wd(4), "tina", qe_pic="qe_eve", component=MS),
 
         # ── L3_DUE_TODAY_SP3_IN_TEST (2) ──
         Ticket("GE-5001", "Due today SP3 InTest #1", "InTest", 3,
@@ -87,11 +87,11 @@ def generate_mock_tickets() -> list[Ticket]:
         Ticket("GE-5002", "Due today SP3 InTest #2", "InTest", 3,
                wd(-2), TODAY, wd(2), "vito", qe_pic="qe_bob", component=CRM),
 
-        # ── L3_DUE_1DAY_AGO_SP5_OR_8_IN_TEST (2) ──
-        Ticket("GE-5101", "Quá 1 ngày SP8 InTest #1", "InTest", 8,
-               wd(-4), wd(-1), wd(1), "wendy", qe_pic="qe_bob", component=CRM),
-        Ticket("GE-5102", "Quá 1 ngày SP5 InTest #2", "InTest", 5,
-               wd(-4), wd(-1), wd(1), "xavi", qe_pic="qe_eve", component=MS),
+        # ── L3_DUE_1DAY_LEFT_SP5_OR_8_IN_TEST (2) ──
+        Ticket("GE-5101", "Còn 1 ngày SP8 InTest #1", "InTest", 8,
+               wd(-3), wd(1), wd(3), "wendy", qe_pic="qe_bob", component=CRM),
+        Ticket("GE-5102", "Còn 1 ngày SP5 InTest #2", "InTest", 5,
+               wd(-3), wd(1), wd(3), "xavi", qe_pic="qe_eve", component=MS),
 
         # ── L3_PRE_SANDBOX_2DAYS_SP8_NOT_INDEV (2) ──
         Ticket("GE-5201", "Còn 2 ngày sandbox SP8 #1", "In Analysis", 8,

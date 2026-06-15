@@ -1,7 +1,8 @@
 """
 Rule Engine — đọc rules.yaml, evaluate reactive/aggregate rules trên danh sách ticket.
-Copy từ engine.py (parent dir) để qe_agent/ self-contained.
+Cũng export hàm run() để chạy pipeline Ticket → DailyReport.
 """
+import os
 import sqlite3
 import yaml
 import json
@@ -74,6 +75,7 @@ class RuleEngine:
             "story_point": t.get("story_point"),
             "assignee": t.get("assignee"),
             "qe_pic": t.get("qe_pic"),
+            "no_qe": bool(t.get("no_qe")),
             "test_start_date": parse_d(t.get("test_start_date")),
             "test_complete_date": parse_d(t.get("test_complete_date")),
             "sandbox_date": parse_d(t.get("sandbox_date")),
@@ -182,3 +184,137 @@ class RuleEngine:
 
     def rules_by_id(self):
         return {r["id"]: r for r in self.cfg["rules"]}
+
+    def ticket_history(self, ticket_key: str) -> list:
+        cur = self.db.execute(
+            """SELECT rule_id, level, COUNT(*) as count,
+                      MIN(fired_date) as first, MAX(fired_date) as last,
+                      SUM(CASE WHEN resolved_date IS NULL THEN 1 ELSE 0 END) as open
+               FROM violations WHERE ticket_key = ?
+               GROUP BY rule_id, level""",
+            (ticket_key,),
+        )
+        return cur.fetchall()
+
+
+# ---------------------------------------------------------------- pipeline helper
+# Replaces rules.py — converts Ticket dataclasses → dicts → RuleEngine → DailyReport
+
+_RULES_YAML = os.path.join(os.path.dirname(os.path.abspath(__file__)), "rules.yaml")
+_LEVEL_MAP = None  # lazy import to avoid circular
+
+
+def _get_level_map():
+    global _LEVEL_MAP
+    if _LEVEL_MAP is None:
+        from .models import Level
+        _LEVEL_MAP = {0: Level.DATA, 1: Level.VIOLENT, 2: Level.RISK, 3: Level.COMMIT}
+    return _LEVEL_MAP
+
+
+def _to_dict(t) -> dict:
+    return {
+        "key": t.id,
+        "title": t.title,
+        "status": t.status,
+        "story_point": t.story_point,
+        "test_start_date": t.test_start_date,
+        "test_complete_date": t.test_complete_date,
+        "sandbox_date": t.sandbox_date,
+        "assignee": t.assignee,
+        "qe_pic": t.qe_pic,
+        "no_qe": t.no_qe,
+        "blocked": t.blocked,
+        "is_bug": t.is_bug,
+        "component": t.component,
+        "sprints": t.sprints,
+        "labels": [],
+    }
+
+
+def run(tickets: list, today: date = None):
+    from .models import DailyReport, RuleResult
+    today = today or date.today()
+    from datetime import timedelta
+    tomorrow = today + timedelta(days=1)
+    report = DailyReport(report_date=today)
+
+    report.need_start_today = [t for t in tickets if t.test_start_date == today]
+    report.need_complete_today = [t for t in tickets if t.test_complete_date == today]
+    report.sandbox_tomorrow = [t for t in tickets if t.sandbox_date == tomorrow]
+    report.blocked = [t for t in tickets if t.blocked]
+
+    engine = RuleEngine(_RULES_YAML)
+    ticket_dicts = [_to_dict(t) for t in tickets]
+    ticket_by_key = {t.id: t for t in tickets}
+    rules_by_id = engine.rules_by_id()
+
+    scan = engine.scan(today, ticket_dicts, skip_weekend_check=True)
+    level_map = _get_level_map()
+
+    for v in scan["violations"]:
+        key = v["ticket"]
+        level_int = v["level"]
+
+        if key.startswith("AGG:"):
+            _handle_aggregate(v, rules_by_id, ticket_by_key, report, level_map)
+            continue
+
+        ticket = ticket_by_key.get(key)
+        if not ticket:
+            continue
+
+        rule_def = rules_by_id.get(v["rule"], {})
+        channels = rule_def.get("channels", [])
+        recipients = rule_def.get("recipients", [])
+
+        result = RuleResult(
+            rule_id=v["rule"],
+            level=level_map.get(level_int, level_map[2]),
+            ticket=ticket,
+            reason=v["msg"],
+            send_qe="qe_channel" in channels,
+            send_dev="dev_channel" in channels,
+            mention_assignee="assignee" in recipients,
+        )
+
+        if level_int == 0:
+            report.level0.append(result)
+        elif level_int == 1:
+            report.level1.append(result)
+        elif level_int == 2:
+            report.level2.append(result)
+        elif level_int == 3:
+            report.level3.append(result)
+
+    return report
+
+
+def _handle_aggregate(v, rules_by_id, ticket_by_key, report, level_map):
+    from .models import RuleResult
+    rule_def = rules_by_id.get(v["rule"], {})
+    agg_keys = v.get("agg_tickets", [])
+    rep_ticket = ticket_by_key.get(agg_keys[0]) if agg_keys else None
+    if not rep_ticket:
+        return
+
+    channels = rule_def.get("channels", [])
+    recipients = rule_def.get("recipients", [])
+    level_int = v["level"]
+
+    result = RuleResult(
+        rule_id=v["rule"],
+        level=level_map.get(level_int, level_map[2]),
+        ticket=rep_ticket,
+        reason=v["msg"],
+        send_qe="qe_channel" in channels,
+        send_dev="dev_channel" in channels,
+        mention_assignee="assignee" in recipients,
+    )
+
+    if level_int == 1:
+        report.level1.append(result)
+    elif level_int == 2:
+        report.level2.append(result)
+    elif level_int == 3:
+        report.level3.append(result)

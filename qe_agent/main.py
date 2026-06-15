@@ -15,7 +15,7 @@ import sys
 import time
 from datetime import date
 
-from . import rules
+from .rule_engine import run as run_rules
 from .mock_data import generate_mock_tickets
 
 logging.basicConfig(
@@ -29,9 +29,10 @@ RETRY_WAIT = 30  # seconds
 
 
 def run_pipeline(use_mock: bool = False, dry_run: bool = False,
+                 preview: bool = False,
                  keys: list[str] | None = None, sprint: str | None = None,
                  use_sprint: bool = False, team: str | None = None) -> None:
-    log.info("Pipeline start (mock=%s, dry_run=%s)", use_mock, dry_run)
+    log.info("Pipeline start (mock=%s, dry_run=%s, preview=%s)", use_mock, dry_run, preview)
 
     # 1. fetch
     if use_mock:
@@ -51,7 +52,7 @@ def run_pipeline(use_mock: bool = False, dry_run: bool = False,
     log.info("Fetched %d tickets", len(tickets))
 
     # 2. rules
-    report = rules.run(tickets, today=date.today())
+    report = run_rules(tickets, today=date.today())
     log.info("Report: start=%d complete=%d sandbox=%d blocked=%d "
              "L1=%d L2=%d L3=%d",
              len(report.need_start_today), len(report.need_complete_today),
@@ -62,7 +63,27 @@ def run_pipeline(use_mock: bool = False, dry_run: bool = False,
         log.info("Report empty — nothing to send")
         return
 
-    # 3. send (with retry)
+    # 3a. preview mode — render HTML and open in browser (demo use)
+    if preview:
+        import tempfile, webbrowser
+        from .teams_sender import route, _build_html, CHANNEL_TITLE
+        from .models import CH_QE, CH_DEV_MS, CH_DEV_CRM
+        routed = route(report)
+        date_str = report.report_date.isoformat()
+        pages = []
+        for ch in [CH_QE, CH_DEV_MS, CH_DEV_CRM]:
+            groups = routed.get(ch)
+            if groups:
+                pages.append(_build_html(CHANNEL_TITLE[ch], date_str, groups))
+        combined = "\n<hr style='margin:40px 0'>\n".join(pages) if pages else "<p>Không có vi phạm 🎉</p>"
+        with tempfile.NamedTemporaryFile("w", suffix=".html", delete=False, encoding="utf-8") as f:
+            f.write(combined)
+            path = f.name
+        log.info("Preview HTML → %s", path)
+        webbrowser.open(f"file://{path}")
+        return
+
+    # 3b. send (with retry)
     from .teams_sender import send
     for attempt in range(1, MAX_RETRY + 1):
         try:
@@ -99,6 +120,7 @@ def main() -> None:
     p.add_argument("--once", action="store_true", help="run pipeline once and exit")
     p.add_argument("--mock", action="store_true", help="use mock data instead of Jira")
     p.add_argument("--dry-run", action="store_true", help="print card to screen, don't send")
+    p.add_argument("--preview", action="store_true", help="render HTML report and open in browser (demo)")
     p.add_argument("--keys", nargs="+", metavar="KEY_OR_LINK",
                    help="check theo link/key cụ thể, vd: --keys GE-14209 https://.../browse/CRM-99")
     p.add_argument("--sprint", nargs="?", const="", metavar="NAME_OR_ID",
@@ -123,8 +145,8 @@ def main() -> None:
         use_sprint = True
         sprint = args.sprint or None  # "" -> None -> open sprint
 
-    if args.once or args.keys or use_sprint or args.team:
-        run_pipeline(use_mock=args.mock, dry_run=args.dry_run,
+    if args.once or args.keys or use_sprint or args.team or args.preview:
+        run_pipeline(use_mock=args.mock, dry_run=args.dry_run, preview=args.preview,
                      keys=args.keys, sprint=sprint, use_sprint=use_sprint,
                      team=args.team)
     else:
