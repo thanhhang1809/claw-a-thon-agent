@@ -207,7 +207,10 @@ _LEVEL_MAP = None  # lazy import to avoid circular
 def _get_level_map():
     global _LEVEL_MAP
     if _LEVEL_MAP is None:
-        from .models import Level
+        try:
+            from .models import Level
+        except ImportError:
+            from models import Level
         _LEVEL_MAP = {0: Level.DATA, 1: Level.VIOLENT, 2: Level.RISK, 3: Level.COMMIT}
     return _LEVEL_MAP
 
@@ -233,7 +236,10 @@ def _to_dict(t) -> dict:
 
 
 def run(tickets: list, today: date = None):
-    from .models import DailyReport, RuleResult
+    try:
+        from .models import DailyReport, RuleResult
+    except ImportError:
+        from models import DailyReport, RuleResult
     today = today or date.today()
     from datetime import timedelta
     tomorrow = today + timedelta(days=1)
@@ -291,7 +297,10 @@ def run(tickets: list, today: date = None):
 
 
 def _handle_aggregate(v, rules_by_id, ticket_by_key, report, level_map):
-    from .models import RuleResult
+    try:
+        from .models import RuleResult
+    except ImportError:
+        from models import RuleResult
     rule_def = rules_by_id.get(v["rule"], {})
     agg_keys = v.get("agg_tickets", [])
     rep_ticket = ticket_by_key.get(agg_keys[0]) if agg_keys else None

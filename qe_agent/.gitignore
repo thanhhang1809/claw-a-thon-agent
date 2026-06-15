@@ -4,3 +4,8 @@
 __pycache__/
 *.pyc
 *.db
+
+# Vendored AgentBase skills tooling — contains credentials/token cache, never commit
+greennode-agentbase-skills/
+.greennode.json
+.agentbase/
