@@ -15,7 +15,7 @@ python3 -m qe_agent.mock_data                       # in mock tickets dạng JSO
 ```
 
 ## Chạy thật
-Copy `.env.example` → `.env`, điền token + webhook, rồi export (hoặc dùng tool nạp .env):
+Copy `.env.example` → `.env`, điền token + flow URL, rồi export (hoặc dùng tool nạp .env):
 ```bash
 export JIRA_BASE_URL=https://jira.zalopay.vn
 export JIRA_PAT=...
@@ -40,10 +40,10 @@ Thêm `--dry-run` vào bất kỳ lệnh nào để in card thay vì gửi Teams
 - Sprint: lấy ACTIVE sprint của project qua Jira Agile API; lọc team theo prefix tên sprint ("MS -" / "CRM -")
 - Blocked = status "BLOCKED / ON HOLD"; NoQE = label "NoQE"/"no_qe"
 
-## Channels (mỗi cái 1 webhook)
-- `TEAMS_WEBHOOK_QE` → QE Daily
-- `TEAMS_WEBHOOK_DEV_MS` → Dev MS
-- `TEAMS_WEBHOOK_DEV_CRM` → Dev CRM
+## Channels (mỗi cái 1 Power Automate flow)
+- `TEAMS_FLOW_QE` → QE Daily
+- `TEAMS_FLOW_DEV_MS` → Dev MS
+- `TEAMS_FLOW_DEV_CRM` → Dev CRM
 Routing: ticket MS → QE + DevMS; CRM → QE + DevCRM; không component → cả hai Dev.
 
 ## Còn để xác nhận khi chạy live

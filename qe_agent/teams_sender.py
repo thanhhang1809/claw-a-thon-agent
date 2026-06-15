@@ -1,13 +1,14 @@
 """
-Module 1C - Teams Sender (gửi qua email đến Teams channel).
-Mỗi channel = 1 Teams channel email address (Forward to email).
+Module 1C - Teams Sender (gửi qua Power Automate Workflow).
+Mỗi channel = 1 Power Automate flow URL (trigger "When a Teams webhook request
+is received"). Agent POST JSON {title, date, html} tới flow; flow post vào kênh.
+KHÔNG cần Graph API / app registration / Entra ID.
 """
 from __future__ import annotations
 import os
-import smtplib
+import json
+import requests
 from collections import defaultdict
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
 
 from .models import (
     DailyReport, Ticket, RuleResult,
@@ -33,10 +34,10 @@ SECTION_COLOR = {
     "⛔ Blocked":             "#b71c1c",
 }
 
-CHANNEL_EMAIL_ENV = {
-    CH_QE:      "TEAMS_EMAIL_QE",
-    CH_DEV_MS:  "TEAMS_EMAIL_DEV_MS",
-    CH_DEV_CRM: "TEAMS_EMAIL_DEV_CRM",
+CHANNEL_FLOW_ENV = {
+    CH_QE:      "TEAMS_FLOW_QE",
+    CH_DEV_MS:  "TEAMS_FLOW_DEV_MS",
+    CH_DEV_CRM: "TEAMS_FLOW_DEV_CRM",
 }
 CHANNEL_TITLE = {
     CH_QE: "QE Daily", CH_DEV_MS: "Dev — MS", CH_DEV_CRM: "Dev — CRM",
@@ -154,7 +155,8 @@ def _rule_table(group: dict) -> str:
                 f"{i}. {r}" for i, r in enumerate(reasons, 1))
         rows_html += (
             f'<tr>'
-            f'<td {td}>{_ticket_link(t)}</td>'
+            f'<td {td}>{_ticket_link(t)}'
+            f'<div style="font-size:11px;color:#777;margin-top:2px;max-width:200px">{t.title or ""}</div></td>'
             f'<td {td}><span style="font-size:12px;color:#555">{t.status or "—"}</span></td>'
             f'<td {td}>{t.assignee or "—"}{" <b style=color:#d32f2f>[NoQE]</b>" if t.no_qe else ""}</td>'
             f'<td {td}>{t.qe_pic or "—"}</td>'
@@ -176,25 +178,59 @@ def _rule_table(group: dict) -> str:
     )
 
 
-def _build_html(channel_title: str, date_str: str, groups: list[dict]) -> str:
-    # gom group theo level để in header level
+def _level_blocks(groups: list[dict]) -> str:
+    """Dựng các khối level→rule từ danh sách group."""
     by_level: dict[int, list] = defaultdict(list)
     for g in groups:
         by_level[g["level"]].append(g)
-
-    body = ""
+    out = ""
     for level in sorted(by_level):
         color = LEVEL_COLOR.get(level, "#757575")
         total = sum(len(g["rows"]) for g in by_level[level])
         suffix = "ticket" if level == -1 else "vi phạm"
-        body += (
+        out += (
             f'<div style="background:{color};color:#fff;padding:9px 14px;'
             f'border-radius:6px;font-weight:700;font-size:13px;margin:18px 0 8px">'
             f'{LEVEL_NAME.get(level, "?")} &nbsp;'
             f'<span style="opacity:.85;font-weight:400">— {total} {suffix}</span></div>'
         )
         for g in by_level[level]:
-            body += _rule_table(g)
+            out += _rule_table(g)
+    return out
+
+
+def _filter_groups_by_team(groups: list[dict], team_component: str) -> list[dict]:
+    """Giữ lại trong mỗi group những row thuộc team (component khớp hoặc None=cả hai)."""
+    result = []
+    for g in groups:
+        rows = [r for r in g["rows"]
+                if r["ticket"].component == team_component or r["ticket"].component is None]
+        if rows:
+            result.append({**g, "rows": rows})
+    return result
+
+
+def _team_split_blocks(groups: list[dict]) -> str:
+    """Chia QE Daily thành 2 nhóm MS và CRM, mỗi nhóm là các khối level→rule."""
+    from .models import COMPONENT_MS, COMPONENT_CRM
+    out = ""
+    for team_name, comp, color in [("🟢 MS — Marketing Solutions", COMPONENT_MS, "#2e7d32"),
+                                    ("🟣 CRM", COMPONENT_CRM, "#6a1b9a")]:
+        tgroups = _filter_groups_by_team(groups, comp)
+        total = sum(len(g["rows"]) for g in tgroups)
+        out += (
+            f'<div style="background:{color};color:#fff;padding:11px 16px;'
+            f'border-radius:8px;font-weight:800;font-size:15px;margin:24px 0 6px">'
+            f'{team_name} <span style="opacity:.85;font-weight:400">— {total} ticket</span></div>'
+        )
+        out += _level_blocks(tgroups) if tgroups else \
+            '<div style="padding:8px 14px;color:#999;font-style:italic">(không có)</div>'
+    return out
+
+
+def _build_html(channel_title: str, date_str: str, groups: list[dict],
+                team_split: bool = False) -> str:
+    body = _team_split_blocks(groups) if team_split else _level_blocks(groups)
 
     return f"""<!doctype html>
 <html><head><meta charset="utf-8"></head>
@@ -239,7 +275,8 @@ def render_text(report: DailyReport) -> str:
             out.append(f"  [{g['rule_id']}]  ({len(g['rows'])} ticket)")
             for row in g["rows"]:
                 t = row["ticket"]
-                out.append(f"    {t.id:12} status={t.status or '—':18} "
+                out.append(f"    {t.id:12} {(t.title or '')[:45]}")
+                out.append(f"    {'':12} status={t.status or '—':18} "
                            f"assignee={t.assignee or '—':10} QE={t.qe_pic or '—'}")
                 for i, r in enumerate(row["reasons"], 1):
                     pfx = f"      {i}." if len(row["reasons"]) > 1 else "      →"
@@ -249,18 +286,11 @@ def render_text(report: DailyReport) -> str:
 
 
 # ---------------------------------------------------------------------------
-# send
+# send (Power Automate)
 # ---------------------------------------------------------------------------
-def _send_one(to: str, subject: str, html: str, from_addr: str, password: str) -> None:
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = subject
-    msg["From"]    = from_addr
-    msg["To"]      = to
-    msg.attach(MIMEText(html, "html", "utf-8"))
-    with smtplib.SMTP("smtp.gmail.com", 587) as s:
-        s.starttls()
-        s.login(from_addr, password)
-        s.sendmail(from_addr, to, msg.as_string())
+def _post_flow(flow_url: str, payload: dict) -> None:
+    resp = requests.post(flow_url, json=payload, timeout=30)
+    resp.raise_for_status()
 
 
 def send(report: DailyReport, dry_run: bool = False) -> None:
@@ -271,24 +301,20 @@ def send(report: DailyReport, dry_run: bool = False) -> None:
         print(render_text(report))
         return
 
-    gmail_user = os.getenv("GMAIL_USER")
-    gmail_pass = os.getenv("GMAIL_APP_PASSWORD")
-
-    if not gmail_user or not gmail_pass:
-        raise RuntimeError("Thiếu GMAIL_USER / GMAIL_APP_PASSWORD trong .env")
-
     for ch, groups in routed.items():
         if not groups:
             continue
-        to_email = os.getenv(CHANNEL_EMAIL_ENV[ch])
-        if not to_email:
-            print(f"[skip] {CHANNEL_EMAIL_ENV[ch]} chưa set — bỏ qua {ch}")
+        flow_url = os.getenv(CHANNEL_FLOW_ENV[ch])
+        if not flow_url:
+            print(f"[skip] {CHANNEL_FLOW_ENV[ch]} chưa set — bỏ qua {ch}")
             continue
 
         levels = {g["level"] for g in groups}
         prefix = "🔴" if 1 in levels else ("🟠" if 2 in levels else "📋")
-        subject = f"{prefix} QA Watchdog {date_str} — {CHANNEL_TITLE[ch]}"
+        title = f"{prefix} QA Watchdog {date_str} — {CHANNEL_TITLE[ch]}"
+        html = _build_html(CHANNEL_TITLE[ch], date_str, groups,
+                           team_split=(ch == CH_QE))
 
-        html = _build_html(CHANNEL_TITLE[ch], date_str, groups)
-        _send_one(to_email, subject, html, gmail_user, gmail_pass)
-        print(f"[sent] {subject} → {to_email}")
+        # Payload Power Automate flow nhận: title + html (flow post html vào kênh).
+        _post_flow(flow_url, {"title": title, "date": date_str, "html": html})
+        print(f"[sent] {title} → flow {ch}")

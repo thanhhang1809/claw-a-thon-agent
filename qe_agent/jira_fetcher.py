@@ -14,10 +14,13 @@ from typing import Optional
 import requests
 from .models import Ticket, STATUS_BLOCKED
 
-# JQL filter theo roadmap, gồm bug. Sửa cho đúng project/board của bạn.
+# Lọc loại issue. Giữ Story, Task, Bug.
+ISSUETYPE_CLAUSE = os.getenv("JIRA_ISSUETYPE_CLAUSE", "issuetype in (Story, Task, Bug)")
+
+# JQL filter theo roadmap. Sửa cho đúng project/board của bạn.
 ROADMAP_JQL = os.getenv(
     "JIRA_JQL",
-    'project = GE AND issuetype in (Story, Task, Bug) ORDER BY created DESC'
+    f'project = GE AND {ISSUETYPE_CLAUSE} ORDER BY created DESC'
 )
 
 # Map tên field Jira -> field của Ticket. (Zalopay Jira Server, đã xác nhận)
@@ -107,7 +110,7 @@ def fetch_by_sprint(sprint: str | None = None, team: str | None = None) -> list[
         clause = f"sprint = {sprint}"
     else:
         clause = f'sprint = "{sprint}"'
-    jql = f"{clause} AND issuetype in (Story, Task, Bug) ORDER BY created DESC"
+    jql = f"{clause} AND {ISSUETYPE_CLAUSE} ORDER BY created DESC"
     tickets = _search(jql)
     if team:
         from .models import ticket_in_team_sprint
@@ -177,8 +180,8 @@ def fetch_active_sprint(project_key: str, team: str | None = None) -> list[Ticke
     if not ids:
         return []
     id_list = ",".join(str(i) for i in ids)
-    jql = (f"sprint in ({id_list}) AND issuetype in (Story, Task, Bug) "
-           f"ORDER BY created DESC")
+    jql = (f"project = {project_key} AND sprint in ({id_list}) "
+           f"AND {ISSUETYPE_CLAUSE} ORDER BY created DESC")
     tickets = _search(jql)
     if team:
         from .models import ticket_in_team_sprint
@@ -252,7 +255,8 @@ def _normalize(issue: dict) -> Ticket:
         qe_pic_username=qe_user,
         no_qe=bool(NOQE_LABELS & set(labels)),
         blocked=status_name.lower() in STATUS_BLOCKED,
-        is_bug=(f.get("issuetype") or {}).get("name", "") == "Bug",
+        is_bug=("bug" in (f.get("issuetype") or {}).get("name", "").lower()
+                or "defect" in (f.get("issuetype") or {}).get("name", "").lower()),
         component=component,
         sprints=_parse_sprints(f.get(SPRINT_FIELD)),
     )
