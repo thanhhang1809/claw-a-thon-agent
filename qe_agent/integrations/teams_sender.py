@@ -377,6 +377,54 @@ def _post_flow(flow_url: str, payload: dict) -> None:
 
 
 # ---------------------------------------------------------------------------
+# QE Daily — khi report quá dài thì tách ticket theo component (MS / CRM)
+# thành các email riêng (mỗi component còn quá dài sẽ tiếp tục phân trang).
+# ---------------------------------------------------------------------------
+def _too_long(groups: list[dict], max_rows: int, max_bytes: int = None) -> bool:
+    """report có vượt ngưỡng 1 email (theo dòng HOẶC dung lượng) không."""
+    if max_bytes is None:
+        max_bytes = _max_bytes_per_email()
+    total_rows = sum(len(g["rows"]) for g in groups)
+    total_bytes = sum(_group_bytes(g) for g in groups)
+    return total_rows > max_rows or total_bytes > max_bytes
+
+
+def _component_partitions(groups: list[dict]) -> list[tuple[str, list[dict]]]:
+    """Chia QE Daily thành email riêng theo team: MS và CRM.
+    Dùng cùng filter với _team_split_blocks (component khớp HOẶC None=cả hai),
+    nên ticket dùng chung (component None) xuất hiện ở cả 2 email — đúng ngữ
+    nghĩa 'liên quan cả hai team'. Trả về [(nhãn, subgroups), ...] phần có data."""
+    from engine.models import COMPONENT_MS, COMPONENT_CRM
+    out = []
+    for label, comp in [("MS", COMPONENT_MS), ("CRM", COMPONENT_CRM)]:
+        sub = _filter_groups_by_team(groups, comp)
+        if sub:
+            out.append((label, sub))
+    return out
+
+
+def _send_channel_pages(to_email: str, channel_title: str, date_str: str,
+                        groups: list[dict], team_split: bool,
+                        gmail_user: str, gmail_pass: str, max_rows: int) -> int:
+    """Phân trang 1 (sub)report rồi gửi từng part. Trả về số email đã gửi."""
+    pages = _paginate(groups, max_rows)
+    total = len(pages)
+    for idx, page_groups in enumerate(pages, 1):
+        levels = {g["level"] for g in page_groups}
+        prefix = "🔴" if 1 in levels else ("🟠" if 2 in levels else "📋")
+        part = f" (Phần {idx}/{total})" if total > 1 else ""
+        subject = f"{prefix} QE Watchdog {date_str} — {channel_title}{part}"
+        html = _build_html(channel_title, date_str, page_groups,
+                           team_split=team_split,
+                           page=idx if total > 1 else None,
+                           total_pages=total if total > 1 else None)
+        text = _build_text(channel_title, date_str, page_groups)
+        _send_one(to_email, subject, text, html, gmail_user, gmail_pass)
+        print(f"[sent] {subject} → {to_email}")
+    return total
+
+
+# ---------------------------------------------------------------------------
 # send — gửi report qua EMAIL tới địa chỉ "post to channel" của Teams.
 # multipart/alternative: text/plain (luôn hiển thị) + text/html (đẹp).
 # ---------------------------------------------------------------------------
@@ -417,20 +465,18 @@ def send(report: DailyReport, dry_run: bool = False) -> None:
             print(f"[skip] {CHANNEL_EMAIL_ENV[ch]} chưa set — bỏ qua {ch}")
             continue
 
-        # Tách thành nhiều email nếu data quá dài để client/Teams hiển thị đủ
-        pages = _paginate(groups, max_rows)
-        total = len(pages)
+        # QE Daily: nếu report quá dài cho 1 email → tách ticket theo component
+        # (MS / CRM) thành các email RIÊNG; mỗi component còn dài sẽ tự phân trang.
+        if ch == CH_QE and _too_long(groups, max_rows):
+            for label, sub_groups in _component_partitions(groups):
+                _send_channel_pages(to_email, f"{CHANNEL_TITLE[ch]} · {label}",
+                                    date_str, sub_groups, team_split=False,
+                                    gmail_user=gmail_user, gmail_pass=gmail_pass,
+                                    max_rows=max_rows)
+            continue
 
-        for idx, page_groups in enumerate(pages, 1):
-            levels = {g["level"] for g in page_groups}
-            prefix = "🔴" if 1 in levels else ("🟠" if 2 in levels else "📋")
-            part = f" (Phần {idx}/{total})" if total > 1 else ""
-            subject = f"{prefix} QE Watchdog {date_str} — {CHANNEL_TITLE[ch]}{part}"
-
-            html = _build_html(CHANNEL_TITLE[ch], date_str, page_groups,
-                               team_split=(ch == CH_QE),
-                               page=idx if total > 1 else None,
-                               total_pages=total if total > 1 else None)
-            text = _build_text(CHANNEL_TITLE[ch], date_str, page_groups)
-            _send_one(to_email, subject, text, html, gmail_user, gmail_pass)
-            print(f"[sent] {subject} → {to_email}")
+        # Vừa 1 email (hoặc kênh Dev): gửi như cũ (QE Daily vẫn hiện MS+CRM gộp)
+        _send_channel_pages(to_email, CHANNEL_TITLE[ch], date_str, groups,
+                            team_split=(ch == CH_QE),
+                            gmail_user=gmail_user, gmail_pass=gmail_pass,
+                            max_rows=max_rows)
