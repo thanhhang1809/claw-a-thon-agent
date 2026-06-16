@@ -409,14 +409,27 @@ def _paginate(groups: list[dict], max_rows: int, max_bytes: int = None) -> list[
 # Plain-text bản song song HTML — Teams "post via email" sanitize HTML bảng
 # rất mạnh, cần text/plain để data luôn hiển thị.
 # ---------------------------------------------------------------------------
-def _build_text(channel_title: str, date_str: str, groups: list[dict]) -> str:
+def _build_text(channel_title: str, date_str: str, groups: list[dict], max_rows: int = None) -> str:
+    """Build text/plain email. Nếu data quá dài thì chỉ show header+summary, không detail."""
+    if max_rows is None:
+        max_rows = _max_rows_per_email()
+
     by_level: dict[int, list] = defaultdict(list)
     for g in groups:
         by_level[g["level"]].append(g)
-    # dòng tóm tắt lên đầu — để preview (Teams cắt ngắn) vẫn thấy con số chính
+
+    # dòng tóm tắt
     cnt = lambda lv: sum(len(g["rows"]) for g in by_level.get(lv, []))
     summary = f"🔴 {cnt(1)} · 🟠 {cnt(2)} · 🟡 {cnt(3)} · ⚪ {cnt(0)} vi phạm"
-    lines = [f"QE WATCHDOG — {channel_title}  ({date_str})",
+
+    # Nếu data quá dài, chỉ show header + summary, không show detail (để Teams không cắt)
+    if _too_long(groups, max_rows):
+        return (f"📋 QE Watchdog {date_str} — {channel_title}\n\n"
+                f"TÓM TẮT: {summary}\n\n"
+                f"⚠️  NỘI DUNG QUÁ DÀI — MỞ 'EMAIL GỐC' ĐỂ XEM ĐẦY ĐỦ")
+
+    # Data bình thường: show full header + summary + detail
+    lines = [f"📋 QE Watchdog {date_str} — {channel_title}",
              f"TÓM TẮT: {summary}  — xem 'Email gốc' để xem đầy đủ", ""]
     for level in _ordered_levels(by_level):
         total = sum(len(g["rows"]) for g in by_level[level])
@@ -477,7 +490,7 @@ def _send_channel_pages(to_email: str, channel_title: str, date_str: str,
     prefix = "🔴" if 1 in levels else ("🟠" if 2 in levels else "📋")
     subject = f"{prefix} QE Watchdog {date_str} — {channel_title}"
     html = _build_html(channel_title, date_str, groups, team_split=team_split)
-    text = _build_text(channel_title, date_str, groups)
+    text = _build_text(channel_title, date_str, groups, max_rows=max_rows)
     _send_one(to_email, subject, text, html, gmail_user, gmail_pass)
     print(f"[sent] {subject} → {to_email}")
     return 1
