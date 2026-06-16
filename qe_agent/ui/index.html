@@ -45,7 +45,7 @@
     <header class="bg-white border-b px-6 py-3 flex items-center gap-4 shrink-0">
       <h1 id="viewTitle" class="text-lg font-semibold flex-1">Chat</h1>
       <div id="srcPicker" class="flex items-center gap-3 text-sm">
-        <span class="text-slate-500">Nguồn dữ liệu:</span>
+        <span class="text-slate-500">Data source:</span>
         <select id="sourceSel" class="border rounded-lg px-2 py-1.5 bg-slate-50">
           <option value="snapshot">📄 Snapshot</option>
           <option value="live">🌐 Live Jira</option>
@@ -76,10 +76,10 @@ const STATUS = {pass:{t:'Pass',c:'emerald'},warn:{t:'Warn',c:'amber'},fail:{t:'F
 let SRC = {source:'snapshot', snapshot_file:null};
 const NAV = [
   {id:'chat',  ic:'💬', t:'Chat'},
-  {id:'scan',  ic:'🔍', t:'Scan & Vi phạm'},
+  {id:'scan',  ic:'🔍', t:'Scan & Violations'},
   {id:'rules', ic:'📐', t:'Rules'},
-  {id:'sched', ic:'⏰', t:'Lịch chạy'},
-  {id:'history',ic:'🗂️', t:'Lịch sử'},
+  {id:'sched', ic:'⏰', t:'Schedule'},
+  {id:'history',ic:'🗂️', t:'History'},
 ];
 let activeView='chat';
 
@@ -131,12 +131,12 @@ VIEWS.chat=()=>{
     <div id="msgs" class="flex-1 overflow-y-auto scroll px-6 py-5 space-y-4"></div>
     <div class="border-t bg-white px-6 py-3">
       <div class="flex gap-2 max-w-3xl mx-auto">
-        <input id="chatIn" placeholder="Hỏi về trạng thái sprint hiện tại hoặc phân tích insights.."
+        <input id="chatIn" placeholder="Ask about the current sprint or analyze insights.."
           class="flex-1 border rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-[var(--zp)] outline-none"/>
-        <button id="chatSend" class="bg-[var(--zp)] text-white px-5 rounded-xl font-medium hover:opacity-90">Gửi</button>
+        <button id="chatSend" class="bg-[var(--zp)] text-white px-5 rounded-xl font-medium hover:opacity-90">Send</button>
       </div>
       <div class="max-w-3xl mx-auto mt-2 flex flex-wrap gap-2 text-xs">
-        ${['Phân tích vi phạm của sprint hiện tại','Ticket nào đang vi phạm Level 1?','Phân tích insights và xu hướng vi phạm'].map(q=>
+        ${['Analyze violations in the current sprint','Which tickets violate Level 1?','Analyze insights & violation trends'].map(q=>
         `<button class="chip px-3 py-1 rounded-full bg-slate-100 hover:bg-slate-200">${q}</button>`).join('')}
       </div>
     </div></div>`);
@@ -145,7 +145,7 @@ VIEWS.chat=()=>{
   if(!chatHistory.length){
     msgs.appendChild(el(`<div class="text-center text-slate-400 mt-10">
       <div class="text-5xl mb-3">🐶</div><div class="font-medium">QE Watchdog Agent</div>
-      <div class="text-sm">Hỏi bất cứ điều gì về quy trình QE của team.</div></div>`));
+      <div class="text-sm">Ask anything about your team's QE process.</div></div>`));
   } else chatHistory.forEach(m=>msgs.appendChild(bubble(m.role,m.text)));
   const input=wrap.querySelector('#chatIn'), send=wrap.querySelector('#chatSend');
   wrap.querySelectorAll('.chip').forEach(c=>c.onclick=()=>{input.value=c.textContent;send.click();});
@@ -183,9 +183,9 @@ VIEWS.chat=()=>{
           else if(ev.type==='done'){ if(ev.text) text=ev.text; statusEl.textContent=''; render(); }
         }
       }
-    }catch(e){ text='Lỗi: '+e; render(); }
+    }catch(e){ text='Error: '+e; render(); }
     statusEl.textContent='';
-    if(!text) { text='(không có phản hồi)'; render(); }
+    if(!text) { text='(no response)'; render(); }
     chatHistory.push({role:'bot',text});
     busy=false; send.disabled=false;
     msgs.scrollTop=msgs.scrollHeight;
@@ -208,9 +208,9 @@ VIEWS.scan=()=>{
   const today=new Date().toISOString().slice(0,10);
   const wrap=el(`<div class="h-full overflow-y-auto scroll p-6">
     <div class="flex items-end gap-3 mb-5 flex-wrap">
-      <div><label class="text-xs text-slate-500">Ngày scan</label>
+      <div><label class="text-xs text-slate-500">Scan date</label>
         <input id="scanDate" type="date" value="${today}" max="${today}" class="block border rounded-lg px-3 py-2"/></div>
-      <button id="runScan" class="bg-[var(--zp)] text-white px-5 py-2 rounded-lg font-medium hover:opacity-90">🔍 Chạy scan</button>
+      <button id="runScan" class="bg-[var(--zp)] text-white px-5 py-2 rounded-lg font-medium hover:opacity-90">🔍 Run scan</button>
       <div id="scanMeta" class="text-sm text-slate-500"></div>
     </div>
     <div id="scanCards" class="grid grid-cols-4 gap-3 mb-6"></div>
@@ -220,10 +220,10 @@ VIEWS.scan=()=>{
   wrap.querySelector('#runScan').onclick=async()=>{
     const out=wrap.querySelector('#scanOut'), cards=wrap.querySelector('#scanCards');
     const meta=wrap.querySelector('#scanMeta');
-    out.innerHTML='<div class="text-slate-400">Đang chạy rule engine…</div>'; cards.innerHTML='';
+    out.innerHTML='<div class="text-slate-400">Running rule engine…</div>'; cards.innerHTML='';
     const r=await API('/api/scan',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({...SRC, scan_date:clampDate(wrap.querySelector('#scanDate').value)})});
-    if(r.error){out.innerHTML=`<div class="text-red-600">Lỗi: ${esc(r.error)}</div>`;return;}
+    if(r.error){out.innerHTML=`<div class="text-red-600">Error: ${esc(r.error)}</div>`;return;}
     meta.innerHTML=`${r.ticket_count} tickets · ${badge(STATUS[r.status].c,STATUS[r.status].t)} · task #${r.task_id}`;
     cards.innerHTML='';
     [1,2,3,0].forEach(l=>{const L=LEVELS[l];const n=r.counts[l]||0;
@@ -245,7 +245,7 @@ VIEWS.scan=()=>{
         <div class="text-xs text-slate-400 mt-0.5">${esc(v.rule)}${v.qe_pic?' · QE: '+esc(v.qe_pic):''}${v.assignee?' · '+esc(v.assignee):''}</div></div></div>`)));
       out.appendChild(sec);
     });
-    if(!any)out.innerHTML='<div class="text-center text-emerald-600 py-10 text-lg">🎉 Không có vi phạm!</div>';
+    if(!any)out.innerHTML='<div class="text-center text-emerald-600 py-10 text-lg">🎉 No violations!</div>';
   };
 };
 
@@ -328,10 +328,10 @@ VIEWS.report=()=>{
   const today=new Date().toISOString().slice(0,10);
   const wrap=el(`<div class="h-full flex flex-col p-6">
     <div class="flex items-end gap-3 mb-4 flex-wrap">
-      <div><label class="text-xs text-slate-500">Ngày report</label>
+      <div><label class="text-xs text-slate-500">Report date</label>
         <input id="rDate" type="date" value="${today}" max="${today}" class="block border rounded-lg px-3 py-2"/></div>
       <button id="rPrev" class="bg-slate-700 text-white px-4 py-2 rounded-lg hover:opacity-90">👁 Preview</button>
-      <button id="rSend" class="bg-[var(--zp)] text-white px-4 py-2 rounded-lg font-medium hover:opacity-90">📧 Gửi tới Teams</button>
+      <button id="rSend" class="bg-[var(--zp)] text-white px-4 py-2 rounded-lg font-medium hover:opacity-90">📧 Send to Teams</button>
       <div id="rMsg" class="text-sm"></div>
     </div>
     <div class="flex-1 border rounded-xl bg-white overflow-hidden">
@@ -341,15 +341,15 @@ VIEWS.report=()=>{
   const frame=wrap.querySelector('iframe'), msg=wrap.querySelector('#rMsg');
   const body=()=>JSON.stringify({...SRC, scan_date:clampDate(wrap.querySelector('#rDate').value)});
   wrap.querySelector('#rPrev').onclick=async()=>{
-    msg.innerHTML='<span class="text-slate-400">Đang render…</span>';
+    msg.innerHTML='<span class="text-slate-400">Rendering…</span>';
     const html=await API('/api/report/preview',{method:'POST',headers:{'Content-Type':'application/json'},body:body()});
     frame.srcdoc=typeof html==='string'?html:(html.error||'');msg.innerHTML='';
   };
   wrap.querySelector('#rSend').onclick=async()=>{
-    if(!confirm('Gửi report QE thật tới các channel Teams?'))return;
-    msg.innerHTML='<span class="text-slate-400">Đang gửi…</span>';
+    if(!confirm('Send the real QE report to Teams channels?'))return;
+    msg.innerHTML='<span class="text-slate-400">Sending…</span>';
     const r=await API('/api/report/send',{method:'POST',headers:{'Content-Type':'application/json'},body:body()});
-    if(r.error){msg.innerHTML=`<span class="text-red-600">Lỗi: ${esc(r.error)}</span>`;return;}
+    if(r.error){msg.innerHTML=`<span class="text-red-600">Error: ${esc(r.error)}</span>`;return;}
     msg.innerHTML=`${badge(STATUS[r.status].c,STATUS[r.status].t)} <span class="ml-1">${esc(r.summary)}</span>`;
     if(r.html)frame.srcdoc=r.html;
   };
@@ -357,28 +357,28 @@ VIEWS.report=()=>{
 
 // ================= SCHEDULE =================
 VIEWS.sched=async()=>{
-  setView('<div class="p-6 text-slate-400">Đang tải…</div>');
+  setView('<div class="p-6 text-slate-400">Loading…</div>');
   const data=await API('/api/schedules');
   const wrap=el(`<div class="h-full overflow-y-auto scroll p-6">
     <div class="bg-white border rounded-xl p-4 mb-6 max-w-3xl">
-      <h3 class="font-semibold mb-3">➕ Tạo lịch chạy mới</h3>
+      <h3 class="font-semibold mb-3">➕ Create new schedule</h3>
       <div class="grid grid-cols-2 gap-3 text-sm">
-        <label class="block">Tên<input id="sName" value="Daily report Teams" class="w-full border rounded-lg px-3 py-2 mt-1"/></label>
-        <label class="block">Hành động<select id="sAct" class="w-full border rounded-lg px-3 py-2 mt-1">
-          <option value="send">Gửi report Teams</option></select></label>
-        <label class="block">Giờ<input id="sH" type="number" min="0" max="23" value="9" class="w-full border rounded-lg px-3 py-2 mt-1"/></label>
-        <label class="block">Phút<input id="sM" type="number" min="0" max="59" value="0" class="w-full border rounded-lg px-3 py-2 mt-1"/></label>
-        <label class="block">Nguồn dữ liệu<select id="sSource" class="w-full border rounded-lg px-3 py-2 mt-1">
+        <label class="block">Name<input id="sName" value="Daily report Teams" class="w-full border rounded-lg px-3 py-2 mt-1"/></label>
+        <label class="block">Action<select id="sAct" class="w-full border rounded-lg px-3 py-2 mt-1">
+          <option value="send">Send Teams report</option></select></label>
+        <label class="block">Hour<input id="sH" type="number" min="0" max="23" value="9" class="w-full border rounded-lg px-3 py-2 mt-1"/></label>
+        <label class="block">Minute<input id="sM" type="number" min="0" max="59" value="0" class="w-full border rounded-lg px-3 py-2 mt-1"/></label>
+        <label class="block">Data source<select id="sSource" class="w-full border rounded-lg px-3 py-2 mt-1">
           <option value="snapshot">📄 Snapshot</option><option value="live">🌐 Live Jira</option></select></label>
         <label class="block">Snapshot file<select id="sSnap" class="w-full border rounded-lg px-3 py-2 mt-1"></select></label>
-        <div class="block col-span-2">Ngày trong tuần
+        <div class="block col-span-2">Days of week
           <div id="sDays" class="flex flex-wrap gap-1.5 mt-1">
-            ${[['mon','T2'],['tue','T3'],['wed','T4'],['thu','T5'],['fri','T6'],['sat','T7'],['sun','CN']].map(([v,l])=>
+            ${[['mon','Mon'],['tue','Tue'],['wed','Wed'],['thu','Thu'],['fri','Fri'],['sat','Sat'],['sun','Sun']].map(([v,l])=>
               `<button type="button" data-day="${v}" class="dayb px-3.5 py-1.5 rounded-lg border text-sm font-medium select-none">${l}</button>`).join('')}
           </div>
-          <span class="text-xs text-slate-400">Bấm để chọn / bỏ chọn từng ngày</span></div>
+          <span class="text-xs text-slate-400">Click to toggle each day</span></div>
       </div>
-      <button id="sAdd" class="mt-3 bg-[var(--zp)] text-white px-4 py-2 rounded-lg font-medium">Tạo lịch</button>
+      <button id="sAdd" class="mt-3 bg-[var(--zp)] text-white px-4 py-2 rounded-lg font-medium">Create schedule</button>
       <span id="sNote" class="text-xs text-slate-400 ml-2">TZ Asia/Ho_Chi_Minh</span>
     </div>
     <div id="sList" class="space-y-2"></div></div>`);
@@ -393,7 +393,7 @@ VIEWS.sched=async()=>{
     const live=sSource.value==='live';
     sSnap.disabled=live; sSnap.style.opacity=live?.5:1;
     sNote.innerHTML = live
-      ? '⚠️ Live Jira cần JIRA_BASE_URL/JIRA_PAT hợp lệ trong runtime — nếu thiếu, job sẽ fail. Khuyến nghị Snapshot. · TZ Asia/Ho_Chi_Minh'
+      ? '⚠️ Live Jira needs valid JIRA_BASE_URL/JIRA_PAT in the runtime — the job fails if missing. Snapshot recommended. · TZ Asia/Ho_Chi_Minh'
       : 'TZ Asia/Ho_Chi_Minh';
   };
   sSource.onchange=syncSrc; syncSrc();
@@ -413,37 +413,37 @@ VIEWS.sched=async()=>{
   });
   const render=(list)=>{
     const c=wrap.querySelector('#sList');c.innerHTML='';
-    if(!list.length){c.innerHTML='<div class="text-slate-400">Chưa có lịch nào.</div>';return;}
+    if(!list.length){c.innerHTML='<div class="text-slate-400">No schedules yet.</div>';return;}
     list.forEach(s=>{
       const row=el(`<div class="bg-white border rounded-xl p-4 flex items-center gap-4 ${s.enabled?'':'opacity-50'}">
         <div class="text-2xl">${s.action==='send'?'📧':'🔍'}</div>
         <div class="flex-1"><div class="font-medium">${esc(s.name)} ${badge(s.enabled?'emerald':'slate',s.enabled?'ON':'OFF')}</div>
           <div class="text-sm text-slate-500">${String(s.hour).padStart(2,'0')}:${String(s.minute).padStart(2,'0')} · ${esc(s.days)} · ${esc(s.source)}${s.snapshot_file?' · '+esc(s.snapshot_file):''}</div>
-          <div class="text-xs text-slate-400">Chạy gần nhất: ${fmtTime(s.last_run)} ${s.last_status?'· '+s.last_status:''}</div></div>
-        <button data-a="run" class="text-sm px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200">▶ Chạy ngay</button>
-        <button data-a="toggle" class="text-sm px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200">${s.enabled?'Tắt':'Bật'}</button>
-        <button data-a="del" class="text-sm px-3 py-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100">Xoá</button>
+          <div class="text-xs text-slate-400">Last run: ${fmtTime(s.last_run)} ${s.last_status?'· '+s.last_status:''}</div></div>
+        <button data-a="run" class="text-sm px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200">▶ Run now</button>
+        <button data-a="toggle" class="text-sm px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200">${s.enabled?'Disable':'Enable'}</button>
+        <button data-a="del" class="text-sm px-3 py-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100">Delete</button>
       </div>`);
       row.querySelector('[data-a=run]').onclick=async(e)=>{
         if(running)return;                       // chặn gửi request khác khi đang chờ
         running=true;
         const btn=e.currentTarget; const orig=btn.innerHTML;
         wrap.querySelectorAll('[data-a=run]').forEach(b=>b.disabled=true);
-        btn.innerHTML='⏳ Đang chạy…';
+        btn.innerHTML='⏳ Running…';
         try{
           const r=await API(`/api/schedules/${s.id}/run`,{method:'POST'});
           const ok = r && r.status==='pass';
-          if(s.action==='send') toast(ok?'Đã gửi thành công':'Đã có lỗi xảy ra. Báo cáo chưa được gửi.', ok);
-          else toast(ok?'Đã chạy quét thành công':'Đã có lỗi xảy ra khi chạy quét.', ok);
+          if(s.action==='send') toast(ok?'Sent successfully':'An error occurred. The report was not sent.', ok);
+          else toast(ok?'Scan completed successfully':'An error occurred while scanning.', ok);
         }catch(err){
-          toast(s.action==='send'?'Đã có lỗi xảy ra. Báo cáo chưa được gửi.':'Đã có lỗi xảy ra khi chạy quét.', false);
+          toast(s.action==='send'?'An error occurred. The report was not sent.':'An error occurred while scanning.', false);
         }
         running=false;
         btn.innerHTML=orig;
         VIEWS.sched();
       };
       row.querySelector('[data-a=toggle]').onclick=async()=>{await API(`/api/schedules/${s.id}/toggle`,{method:'POST'});VIEWS.sched();};
-      row.querySelector('[data-a=del]').onclick=async()=>{if(confirm('Xoá lịch này?')){await API(`/api/schedules/${s.id}`,{method:'DELETE'});VIEWS.sched();}};
+      row.querySelector('[data-a=del]').onclick=async()=>{if(confirm('Delete this schedule?')){await API(`/api/schedules/${s.id}`,{method:'DELETE'});VIEWS.sched();}};
       c.appendChild(row);
     });
   };
@@ -451,7 +451,7 @@ VIEWS.sched=async()=>{
   wrap.querySelector('#sAdd').onclick=async()=>{
     const src=sSource.value;
     const days=dayBtns.filter(b=>b.dataset.on==='1').map(b=>b.dataset.day).join(',');
-    if(!days){alert('Chọn ít nhất 1 ngày trong tuần');return;}
+    if(!days){alert('Select at least one day');return;}
     await API('/api/schedules',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
       name:wrap.querySelector('#sName').value, action:wrap.querySelector('#sAct').value,
       hour:+wrap.querySelector('#sH').value, minute:+wrap.querySelector('#sM').value,
@@ -464,22 +464,22 @@ VIEWS.sched=async()=>{
 // ================= HISTORY =================
 // Chỉ hiển thị 2 loại action: quét vi phạm (scan) và gửi report Teams (send)
 const HIST_TYPES={
-  scan:           {ic:'🔍', t:'Quét vi phạm — thủ công'},
-  scheduled_scan: {ic:'🔍', t:'Quét vi phạm — tự động theo lịch'},
-  send:           {ic:'📧', t:'Gửi report Teams — thủ công'},
-  scheduled_send: {ic:'📧', t:'Gửi report Teams — tự động theo lịch'},
+  scan:           {ic:'🔍', t:'Violation Scan — manual'},
+  scheduled_scan: {ic:'🔍', t:'Violation Scan — scheduled'},
+  send:           {ic:'📧', t:'Teams Report — manual'},
+  scheduled_send: {ic:'📧', t:'Teams Report — scheduled'},
 };
 // Status = KẾT QUẢ THỰC THI (không phải mức vi phạm)
-const RUN_STATUS={pass:{t:'Thành công',c:'emerald'},warn:{t:'Một phần',c:'amber'},fail:{t:'Lỗi',c:'red'},running:{t:'Đang chạy',c:'sky'}};
+const RUN_STATUS={pass:{t:'Success',c:'emerald'},warn:{t:'Partial',c:'amber'},fail:{t:'Failed',c:'red'},running:{t:'Running',c:'sky'}};
 // rút mức vi phạm từ summary "L1=4 L2=0 L3=0 L0=14" → chip màu
 function sevChips(summary){
   const m=k=>{const r=(summary||'').match(new RegExp(k+'=(\\d+)'));return r?+r[1]:0;};
   const L1=m('L1'),L2=m('L2'),L3=m('L3'),L0=m('L0');
   const chip=(e,n,c)=>n?`<span class="px-1.5 py-0.5 rounded text-[11px] font-semibold bg-${c}-100 text-${c}-700">${e} ${n}</span>`:'';
   const out=[chip('🔴',L1,'red'),chip('🟠',L2,'orange'),chip('🟡',L3,'yellow'),chip('⚪',L0,'slate')].filter(Boolean).join(' ');
-  return out||'<span class="text-emerald-600 text-xs">🎉 sạch</span>';
+  return out||'<span class="text-emerald-600 text-xs">🎉 clean</span>';
 }
-const SEVERITY={critical:{t:'Có vi phạm nghiêm trọng',c:'red'},warn:{t:'Có nguy cơ / thiếu data',c:'amber'},clean:{t:'Sạch',c:'emerald'}};
+const SEVERITY={critical:{t:'Critical violations',c:'red'},warn:{t:'At risk / missing data',c:'amber'},clean:{t:'Clean',c:'emerald'}};
 function metaItem(label,val){return `<div class="bg-slate-50 rounded-lg px-3 py-2"><div class="text-[11px] text-slate-400">${label}</div><div class="font-medium break-words">${esc(val==null||val===''?'—':val)}</div></div>`;}
 // Render chi tiết 1 lượt chạy ở dạng dễ đọc cho người dùng mới
 function renderHistDetail(t, resp){
@@ -488,22 +488,22 @@ function renderHistDetail(t, resp){
   let h=`<div class="bg-white border rounded-xl p-5">
     <div class="flex items-center gap-3 mb-4 flex-wrap">
       <span class="text-lg font-semibold">${H.ic} ${H.t}</span>
-      ${badge(S.c,'Kết quả: '+S.t)}
+      ${badge(S.c,'Result: '+S.t)}
       ${(t.type.includes('scan') && d.severity)?badge(SEVERITY[d.severity].c, SEVERITY[d.severity].t):''}
       <span class="text-xs text-slate-400 ml-auto">🕒 ${fmtTime(t.finished_at||t.created_at)}</span>
     </div>
     <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
-      ${metaItem('Ngày scan', d.scan_date)}
-      ${metaItem('Nguồn dữ liệu', d.source==='live'?'🌐 Live Jira':'📄 Snapshot')}
-      ${d.snapshot_file?metaItem('File snapshot', d.snapshot_file):''}
-      ${d.ticket_count!=null?metaItem('Số ticket quét', d.ticket_count):''}
+      ${metaItem('Scan date', d.scan_date)}
+      ${metaItem('Data source', d.source==='live'?'🌐 Live Jira':'📄 Snapshot')}
+      ${d.snapshot_file?metaItem('Snapshot file', d.snapshot_file):''}
+      ${d.ticket_count!=null?metaItem('Tickets scanned', d.ticket_count):''}
     </div>`;
   if(d.error){
-    h+=`<div class="bg-red-50 text-red-700 rounded-lg p-3 text-sm">❌ Lỗi: ${esc(d.error)}</div>`;
+    h+=`<div class="bg-red-50 text-red-700 rounded-lg p-3 text-sm">❌ Error: ${esc(d.error)}</div>`;
   } else if(t.type.includes('scan') && d.by_level){
     const total=d.violation_count||0;
-    h+=`<div class="mb-3 text-sm">Phát hiện <b>${total}</b> vi phạm trên <b>${d.ticket_count}</b> ticket.</div>`;
-    if(!total) h+='<div class="text-emerald-600 py-2">🎉 Không có vi phạm nào.</div>';
+    h+=`<div class="mb-3 text-sm">Found <b>${total}</b> violations across <b>${d.ticket_count}</b> tickets.</div>`;
+    if(!total) h+='<div class="text-emerald-600 py-2">🎉 No violations.</div>';
     [1,2,3,0].forEach(l=>{
       const vs=d.by_level[l]||[]; if(!vs.length)return;
       const L=LEVELS[l];
@@ -515,30 +515,30 @@ function renderHistDetail(t, resp){
       h+='</div></div>';
     });
   } else if(t.type.includes('send')){
-    const line = d.dry_run ? '🔸 Chế độ xem trước (dry-run) — chưa gửi email thật'
-      : (d.creds_ok===false ? '⚠️ Thiếu cấu hình email (GMAIL/TEAMS_EMAIL) — chưa gửi được'
-      : '✅ Đã gửi report tới Teams');
+    const line = d.dry_run ? '🔸 Preview (dry-run) — no email actually sent'
+      : (d.creds_ok===false ? '⚠️ Email not configured (GMAIL/TEAMS_EMAIL) — not sent'
+      : '✅ Report sent to Teams');
     h+=`<div class="text-sm space-y-2"><div>${line}</div>`;
-    if(d.channels && d.channels.length) h+=`<div>Kênh nhận: ${d.channels.map(c=>badge('sky',c)).join(' ')}</div>`;
+    if(d.channels && d.channels.length) h+=`<div>Channels: ${d.channels.map(c=>badge('sky',c)).join(' ')}</div>`;
     if(d.summary) h+=`<div class="text-slate-500">${esc(d.summary)}</div>`;
     h+='</div>';
   } else {
     h+=`<div class="text-sm text-slate-600">${esc(d.summary||t.summary||'')}</div>`;
   }
-  h+=`<details class="mt-4"><summary class="text-xs text-slate-400 cursor-pointer select-none">Xem dữ liệu thô (JSON)</summary>
+  h+=`<details class="mt-4"><summary class="text-xs text-slate-400 cursor-pointer select-none">View raw data (JSON)</summary>
     <div class="bg-slate-900 text-slate-100 rounded-lg p-3 text-xs overflow-x-auto mt-2"><pre>${esc(JSON.stringify(d,null,2))}</pre></div></details></div>`;
   return h;
 }
 VIEWS.history=async()=>{
-  setView('<div class="p-6 text-slate-400">Đang tải…</div>');
+  setView('<div class="p-6 text-slate-400">Loading…</div>');
   const h=await API('/api/history?limit=300');
   const tasks=(h.tasks||[]).filter(t=>HIST_TYPES[t.type]);   // chỉ scan + send
   const cnt=(f)=>tasks.filter(f).length;
   const cards=[
-    ['Tổng lượt', tasks.length, 'slate'],
-    ['🔍 Quét', cnt(t=>t.type.includes('scan')), 'sky'],
-    ['📧 Gửi report', cnt(t=>t.type.includes('send')), 'violet'],
-    ['⚠️ Lỗi', cnt(t=>t.status==='fail'), 'red'],
+    ['Total runs', tasks.length, 'slate'],
+    ['🔍 Scans', cnt(t=>t.type.includes('scan')), 'sky'],
+    ['📧 Reports', cnt(t=>t.type.includes('send')), 'violet'],
+    ['⚠️ Errors', cnt(t=>t.status==='fail'), 'red'],
   ];
   const wrap=el(`<div class="h-full overflow-y-auto scroll p-6">
     <div class="grid grid-cols-4 gap-3 mb-5">
@@ -546,8 +546,8 @@ VIEWS.history=async()=>{
     </div>
     <div class="bg-white border rounded-xl overflow-hidden">
       <table class="w-full text-sm"><thead class="bg-slate-50 text-slate-500 text-left">
-        <tr><th class="px-4 py-2">Hành động</th><th class="px-4 py-2">Kết quả</th>
-        <th class="px-4 py-2">Chi tiết</th><th class="px-4 py-2">Thời gian</th></tr></thead>
+        <tr><th class="px-4 py-2">Action</th><th class="px-4 py-2">Result</th>
+        <th class="px-4 py-2">Details</th><th class="px-4 py-2">Time</th></tr></thead>
         <tbody id="hBody" class="divide-y"></tbody></table></div>
     <div id="hDetail" class="mt-4"></div></div>`);
   setView(wrap);
@@ -563,27 +563,27 @@ VIEWS.history=async()=>{
       <td class="px-4 py-2 text-slate-400 whitespace-nowrap">${fmtTime(t.finished_at||t.created_at)}</td></tr>`);
     tr.onclick=async()=>{
       const dEl=wrap.querySelector('#hDetail');
-      dEl.innerHTML='<div class="text-slate-400 text-sm">Đang tải chi tiết…</div>';
+      dEl.innerHTML='<div class="text-slate-400 text-sm">Loading details…</div>';
       const d=await API(`/api/history/${t.id}`);
       dEl.innerHTML=renderHistDetail(t, d);
       dEl.scrollIntoView({behavior:'smooth'});
     };
     tb.appendChild(tr);
   });
-  if(!tasks.length)tb.appendChild(elTr('<tr><td colspan="4" class="px-4 py-6 text-center text-slate-400">Chưa có lượt quét / gửi report nào.</td></tr>'));
+  if(!tasks.length)tb.appendChild(elTr('<tr><td colspan="4" class="px-4 py-6 text-center text-slate-400">No scan / report runs yet.</td></tr>'));
 };
 
 // ================= INSIGHTS =================
 VIEWS.insights=()=>{
   const wrap=el(`<div class="h-full overflow-y-auto scroll p-6">
     <div class="flex gap-2 mb-4 max-w-3xl">
-      <input id="iQ" placeholder="Câu hỏi tuỳ chọn (để trống = phân tích tổng quan trends/risks/cải thiện)"
+      <input id="iQ" placeholder="Optional question (leave empty = overall trends/risks/improvements)"
         class="flex-1 border rounded-xl px-4 py-2.5"/>
-      <button id="iGo" class="bg-[var(--zp)] text-white px-5 rounded-xl font-medium">📈 Phân tích</button>
+      <button id="iGo" class="bg-[var(--zp)] text-white px-5 rounded-xl font-medium">📈 Analyze</button>
     </div>
     <div id="iOut" class="grid grid-cols-3 gap-5">
       <div class="col-span-2 prose-chat bg-white border rounded-xl p-5 min-h-[200px]" id="iText">
-        <div class="text-slate-400">Nhấn "Phân tích" để agent đọc lịch sử vi phạm và đưa ra insight.</div></div>
+        <div class="text-slate-400">Click "Analyze" to let the agent read violation history and generate insights.</div></div>
       <div id="iData" class="space-y-3"></div>
     </div></div>`);
   setView(wrap);
@@ -591,14 +591,14 @@ VIEWS.insights=()=>{
     const txt=wrap.querySelector('#iText'); txt.innerHTML='<div class="typing text-slate-400"><span>●</span><span>●</span><span>●</span></div>';
     const r=await API('/api/insights',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({question:wrap.querySelector('#iQ').value||null})});
-    if(r.error){txt.innerHTML=`<span class="text-red-600">Lỗi: ${esc(r.error)}</span>`;return;}
-    txt.innerHTML=marked.parse(r.insights||'(trống)');
+    if(r.error){txt.innerHTML=`<span class="text-red-600">Error: ${esc(r.error)}</span>`;return;}
+    txt.innerHTML=marked.parse(r.insights||'(empty)');
     const d=r.data||{}, side=wrap.querySelector('#iData');side.innerHTML='';
     const card=(title,rows)=>{const c=el(`<div class="bg-white border rounded-xl p-4"><div class="font-semibold text-sm mb-2">${title}</div><div class="space-y-1 text-sm"></div></div>`);
       const b=c.querySelector('div.space-y-1');
       rows.forEach(([k,v])=>b.appendChild(el(`<div class="flex justify-between"><span class="text-slate-600 truncate">${esc(k)}</span><span class="font-semibold">${v}</span></div>`)));
       if(!rows.length)b.innerHTML='<div class="text-slate-400">—</div>';return c;};
-    side.appendChild(card(`📊 Tổng quan`,[['Vi phạm',d.total_violations||0],['Lần scan',d.total_scans||0]]));
+    side.appendChild(card(`📊 Overview`,[['Violations',d.total_violations||0],['Scans',d.total_scans||0]]));
     side.appendChild(card('🔝 Top rule',(d.by_rule||[]).slice(0,6).map(x=>[x.rule_id,x.n])));
     side.appendChild(card('🔁 Repeat offenders',(d.repeat_offenders||[]).slice(0,6).map(x=>[x.ticket_key,x.days+'d'])));
     side.appendChild(card('👤 Top QE PIC',(d.by_qe_pic||[]).slice(0,6).map(x=>[x.qe_pic,x.n])));
