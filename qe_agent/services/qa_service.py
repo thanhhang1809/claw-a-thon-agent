@@ -61,6 +61,10 @@ def list_snapshots() -> list[dict]:
                 out.append({"file": name, "count": len(issues)})
         except Exception:
             continue
+    # sprint thật (ge_sprint_snapshot.json) lên đầu → làm mặc định trong UI;
+    # demo_combined.json là data test (MOCK-*) nên xếp cuối
+    PREFERRED = "ge_sprint_snapshot.json"
+    out.sort(key=lambda s: (s["file"] != PREFERRED, s["file"] == "demo_combined.json", s["file"]))
     return out
 
 
