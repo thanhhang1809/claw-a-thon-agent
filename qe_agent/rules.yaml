@@ -49,7 +49,7 @@ rules:
       or is_empty(test_complete_date))
     recipients: [qe_pic]
     channels: [qe_channel]
-    message: "⚪ {key} thiếu ngày ({missing_dates}) — vui lòng điền đủ."
+    message: "{key} thiếu ngày ({missing_dates}) — vui lòng điền đủ."
 
   # ── LEVEL 1: VIOLENT ──────────────────────────────────────────────────────
   - id: L1_TEST_START_OVERDUE
@@ -62,7 +62,7 @@ rules:
       and status_rank < rank('InTest')
     recipients: [qe_pic, assignee]
     channels: [qe_channel, dev_channel]
-    message: "🔴 {key} đã qua test start date ({test_start_date}) nhưng đang {status}."
+    message: "{key} đã qua test start date ({test_start_date}) nhưng đang {status}."
 
   - id: L1_TEST_COMPLETE_OVERDUE
     name: "Test complete đã qua nhưng chưa qua InTest"
@@ -74,7 +74,7 @@ rules:
       and status in ('New', 'In Analysis', 'InDev', 'Reviewed', 'Ready for testing', 'InTest', 'Walkthrough')
     recipients: [qe_pic]
     channels: [qe_channel, dev_channel]
-    message: "🔴 {key} quá hạn test complete ({test_complete_date}) — đang {status}."
+    message: "{key} quá hạn test complete ({test_complete_date}) — đang {status}."
 
   - id: L1_TOO_MANY_SAME_TEST_START
     name: "Một QE bị dồn quá 3 ticket cùng test start hôm nay"
@@ -86,7 +86,7 @@ rules:
     condition: "count > 3"
     recipients: [qe_pic]
     channels: [qe_channel]
-    message: "🔴 {qe_pic} có {count} tickets cùng test start date hôm nay: {ticket_list}."
+    message: "{qe_pic} có {count} tickets cùng test start date hôm nay: {ticket_list}."
 
   - id: L1_SANDBOX_DATE_WRONG_STATUS
     name: "Tới sandbox date nhưng chưa Walkthrough / Ready for Testing"
@@ -100,7 +100,7 @@ rules:
       - add_label: "NoQC"
     recipients: [qe_pic, assignee]
     channels: [dev_channel]
-    message: "🔴 {key} đến sandbox date ({sandbox_date}) nhưng đang {status} — chưa thể start test."
+    message: "{key} đến sandbox date ({sandbox_date}) nhưng đang {status} — chưa thể start test."
 
   # ── LEVEL 2: RISK (không commit được theo plan) ────────────────────────────
   - id: L2_OVERDUE_STILL_INREVIEW
@@ -113,7 +113,7 @@ rules:
       and status == 'InReview'
     recipients: [qe_pic]
     channels: [qe_channel]
-    message: "🟠 {key} quá hạn test complete ({test_complete_date}), đang {status}"
+    message: "{key} quá hạn test complete ({test_complete_date}), đang {status}"
 
   - id: L2_DUE_TODAY_SP3_NOT_TESTING
     name: "Test complete hôm nay, 3 story point, chưa InTest/InReview"
@@ -126,7 +126,7 @@ rules:
       and status_rank <= rank('InTest')
     recipients: [qe_pic]
     channels: [qe_channel]
-    message: "🟠 {key} hết hạn hôm nay, SP=3, đang {status}."
+    message: "{key} hết hạn hôm nay, SP=3, đang {status}."
 
   - id: L2_DUE_1DAY_LEFT_SP5_NOT_TESTING
     name: "Còn 1 ngày đến test complete, SP=5, chưa InTest/InReview"
@@ -139,7 +139,7 @@ rules:
       and status_rank <= rank('InTest')
     recipients: [qe_pic]
     channels: [qe_channel]
-    message: "🟠 {key} còn 1 ngày đến test complete ({test_complete_date}), SP=5, đang {status}."
+    message: "{key} còn 1 ngày đến test complete ({test_complete_date}), SP=5, đang {status}."
 
   - id: L2_DUE_2DAYS_LEFT_SP8_NOT_TESTING
     name: "Còn 2 ngày đến test complete, SP=8, chưa InTest/InReview"
@@ -152,7 +152,7 @@ rules:
       and status_rank <= rank('InTest')
     recipients: [qe_pic]
     channels: [qe_channel]
-    message: "🟠 {key} còn 2 ngày đến test complete ({test_complete_date}), SP=8, đang {status}."
+    message: "{key} còn 2 ngày đến test complete ({test_complete_date}), SP=8, đang {status}."
 
   # ── LEVEL 3: WARNING ──────────────────────────────────────────────────────
   - id: L3_DUE_TODAY_SP3_IN_TEST
@@ -166,7 +166,7 @@ rules:
       and status == 'InTest'
     recipients: [qe_pic]
     channels: [qe_channel]
-    message: "🟡 {key} hết hạn hôm nay ({test_complete_date}), SP=3, đang InTest — theo dõi tiến độ."
+    message: "{key} hết hạn hôm nay ({test_complete_date}), SP=3, đang InTest — theo dõi tiến độ."
 
   - id: L3_DUE_1DAY_LEFT_SP5_OR_8_IN_TEST
     name: "Còn 1 ngày đến test complete, SP=5 hoặc 8, đang InTest"
@@ -179,7 +179,7 @@ rules:
       and status == 'InTest'
     recipients: [qe_pic]
     channels: [qe_channel]
-    message: "🟡 {key} còn 1 ngày đến test complete ({test_complete_date}), SP={story_point}, đang InTest — theo dõi tiến độ."
+    message: "{key} còn 1 ngày đến test complete ({test_complete_date}), SP={story_point}, đang InTest — theo dõi tiến độ."
 
   - id: L3_PRE_SANDBOX_2DAYS_SP8_NOT_INDEV
     name: "Còn 2 ngày tới sandbox, 8 story point, chưa InDev"
@@ -194,7 +194,7 @@ rules:
       - add_label: "NoQC"
     recipients: [qe_pic, assignee]
     channels: [qe_channel]
-    message: "🟡 {key} còn 2 ngày đến sandbox ({sandbox_date}), SP=8, chưa InDev."
+    message: "{key} còn 2 ngày đến sandbox ({sandbox_date}), SP=8, chưa InDev."
 
   - id: L3_PRE_SANDBOX_1DAY_SP5_NOT_INDEV
     name: "Còn 1 ngày tới sandbox, 5 story point, chưa InDev"
@@ -209,4 +209,4 @@ rules:
       - add_label: "NoQC"
     recipients: [qe_pic, assignee]
     channels: [dev_channel]
-    message: "🟡 {key} còn 1 ngày đến sandbox ({sandbox_date}), SP=5, chưa InDev."
+    message: "{key} còn 1 ngày đến sandbox ({sandbox_date}), SP=5, chưa InDev."
