@@ -244,9 +244,10 @@ def send_report(source: str = "snapshot", snapshot_file: Optional[str] = None,
         channels = [teams_sender.CHANNEL_TITLE.get(c, c) for c, g in routed.items() if g]
         html = _report_html(report)
 
-        # gửi qua Power Automate Flow → cần TEAMS_FLOW_* URL
-        creds_ok = any(os.getenv(teams_sender.CHANNEL_FLOW_ENV[c])
-                       for c in teams_sender.CHANNEL_FLOW_ENV)
+        # gửi qua email tới kênh Teams → cần GMAIL + TEAMS_EMAIL_*
+        creds_ok = bool(os.getenv("GMAIL_USER") and os.getenv("GMAIL_APP_PASSWORD")
+                        and any(os.getenv(teams_sender.CHANNEL_EMAIL_ENV[c])
+                                for c in teams_sender.CHANNEL_EMAIL_ENV))
 
         if report.is_empty():
             status, summary = "pass", "No violations — nothing to send 🎉"
@@ -255,7 +256,7 @@ def send_report(source: str = "snapshot", snapshot_file: Optional[str] = None,
             summary = f"Dry-run — preview {len(channels)} channel(s), not actually sent"
         elif not creds_ok:
             status = "warn"
-            summary = ("TEAMS_FLOW_* (Power Automate Flow URL) not configured — "
+            summary = ("GMAIL_USER/GMAIL_APP_PASSWORD or TEAMS_EMAIL_* not configured — "
                        "cannot send. Preview rendered.")
         else:
             teams_sender.send(report, dry_run=False)
