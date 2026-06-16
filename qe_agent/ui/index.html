@@ -131,12 +131,12 @@ VIEWS.chat=()=>{
     <div id="msgs" class="flex-1 overflow-y-auto scroll px-6 py-5 space-y-4"></div>
     <div class="border-t bg-white px-6 py-3">
       <div class="flex gap-2 max-w-3xl mx-auto">
-        <input id="chatIn" placeholder="Ask about the current sprint or analyze insights.."
+        <input id="chatIn" placeholder="Hỏi về trạng thái sprint hiện tại hoặc phân tích insights.."
           class="flex-1 border rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-[var(--zp)] outline-none"/>
-        <button id="chatSend" class="bg-[var(--zp)] text-white px-5 rounded-xl font-medium hover:opacity-90">Send</button>
+        <button id="chatSend" class="bg-[var(--zp)] text-white px-5 rounded-xl font-medium hover:opacity-90">Gửi</button>
       </div>
       <div class="max-w-3xl mx-auto mt-2 flex flex-wrap gap-2 text-xs">
-        ${['Analyze violations in the current sprint','Which tickets violate Level 1?','Analyze insights & violation trends'].map(q=>
+        ${['Phân tích vi phạm của sprint hiện tại','Ticket nào đang vi phạm Level 1?','Phân tích insights và xu hướng vi phạm'].map(q=>
         `<button class="chip px-3 py-1 rounded-full bg-slate-100 hover:bg-slate-200">${q}</button>`).join('')}
       </div>
     </div></div>`);
@@ -145,7 +145,7 @@ VIEWS.chat=()=>{
   if(!chatHistory.length){
     msgs.appendChild(el(`<div class="text-center text-slate-400 mt-10">
       <div class="text-5xl mb-3">🐶</div><div class="font-medium">QE Watchdog Agent</div>
-      <div class="text-sm">Ask anything about your team's QE process.</div></div>`));
+      <div class="text-sm">Hỏi bất cứ điều gì về quy trình QE của team.</div></div>`));
   } else chatHistory.forEach(m=>msgs.appendChild(bubble(m.role,m.text)));
   const input=wrap.querySelector('#chatIn'), send=wrap.querySelector('#chatSend');
   wrap.querySelectorAll('.chip').forEach(c=>c.onclick=()=>{input.value=c.textContent;send.click();});
@@ -183,9 +183,9 @@ VIEWS.chat=()=>{
           else if(ev.type==='done'){ if(ev.text) text=ev.text; statusEl.textContent=''; render(); }
         }
       }
-    }catch(e){ text='Error: '+e; render(); }
+    }catch(e){ text='Lỗi: '+e; render(); }
     statusEl.textContent='';
-    if(!text) { text='(no response)'; render(); }
+    if(!text) { text='(không có phản hồi)'; render(); }
     chatHistory.push({role:'bot',text});
     busy=false; send.disabled=false;
     msgs.scrollTop=msgs.scrollHeight;
