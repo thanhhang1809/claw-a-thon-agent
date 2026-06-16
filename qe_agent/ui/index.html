@@ -44,7 +44,7 @@
     <!-- Topbar: global data source -->
     <header class="bg-white border-b px-6 py-3 flex items-center gap-4 shrink-0">
       <h1 id="viewTitle" class="text-lg font-semibold flex-1">Chat</h1>
-      <div class="flex items-center gap-3 text-sm">
+      <div id="srcPicker" class="flex items-center gap-3 text-sm">
         <span class="text-slate-500">Nguồn dữ liệu:</span>
         <select id="sourceSel" class="border rounded-lg px-2 py-1.5 bg-slate-50">
           <option value="snapshot">📄 Snapshot</option>
@@ -111,6 +111,8 @@ function switchView(id){
   document.querySelectorAll('#nav button').forEach(b=>
     b.classList.toggle('text-white', b.dataset.v===id));
   document.getElementById('viewTitle').textContent = NAV.find(n=>n.id===id).t;
+  // chỉ Chat & Scan dùng nguồn dữ liệu global; các tab khác (Rules/Lịch chạy/Lịch sử) ẩn đi
+  document.getElementById('srcPicker').style.display = (id==='chat'||id==='scan') ? '' : 'none';
   VIEWS[id]();
 }
 function setView(html){const v=document.getElementById('views');v.innerHTML='';v.appendChild(typeof html==='string'?el(`<div>${html}</div>`):html);}
