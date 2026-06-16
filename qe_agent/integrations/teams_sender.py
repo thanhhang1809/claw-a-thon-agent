@@ -23,6 +23,11 @@ from engine.models import (
 LEVEL_NAME = {-1: "📋 CHECKLIST", 0: "⚪ DATA", 1: "🔴 LEVEL 1 — Violent", 2: "🟠 LEVEL 2 — Risk", 3: "🟡 LEVEL 3 — Commit Risk"}
 LEVEL_COLOR = {-1: "#1565c0", 0: "#757575", 1: "#d32f2f", 2: "#e65100", 3: "#f9a825"}
 LEVEL_DOT = {-1: "🔹", 0: "⚪", 1: "🔴", 2: "🟠", 3: "🟡"}
+# Thứ tự hiển thị theo mức nghiêm trọng (L1 trước → checklist cuối) để phần
+# preview (Teams cắt ngắn) hiện cái quan trọng nhất trước.
+_LEVEL_SORT = {1: 0, 2: 1, 3: 2, 0: 3, -1: 4}
+def _ordered_levels(by_level):
+    return sorted(by_level, key=lambda l: _LEVEL_SORT.get(l, 9))
 SECTION_COLOR = {
     "📋 Test Start Today":    "#1565c0",
     "✅ Test Complete Today":  "#2e7d32",
@@ -173,7 +178,7 @@ def _level_blocks(groups: list[dict]) -> str:
     for g in groups:
         by_level[g["level"]].append(g)
     out = ""
-    for level in sorted(by_level):
+    for level in _ordered_levels(by_level):
         color = LEVEL_COLOR.get(level, "#757575")
         total = sum(len(g["rows"]) for g in by_level[level])
         suffix = "ticket" if level == -1 else "vi phạm"
@@ -323,8 +328,12 @@ def _build_text(channel_title: str, date_str: str, groups: list[dict]) -> str:
     by_level: dict[int, list] = defaultdict(list)
     for g in groups:
         by_level[g["level"]].append(g)
-    lines = [f"QE WATCHDOG — {channel_title}", f"Ngày: {date_str}", ""]
-    for level in sorted(by_level):
+    # dòng tóm tắt lên đầu — để preview (Teams cắt ngắn) vẫn thấy con số chính
+    cnt = lambda lv: sum(len(g["rows"]) for g in by_level.get(lv, []))
+    summary = f"🔴 {cnt(1)} · 🟠 {cnt(2)} · 🟡 {cnt(3)} · ⚪ {cnt(0)} vi phạm"
+    lines = [f"QE WATCHDOG — {channel_title}  ({date_str})",
+             f"TÓM TẮT: {summary}  — xem 'Email gốc' để xem đầy đủ", ""]
+    for level in _ordered_levels(by_level):
         total = sum(len(g["rows"]) for g in by_level[level])
         suffix = "ticket" if level == -1 else "vi phạm"
         lines.append(f"== {LEVEL_NAME.get(level, '?')} — {total} {suffix} ==")
