@@ -75,8 +75,8 @@ def _ticket_dicts(source: str, snapshot_file: Optional[str], jql: Optional[str])
             return _adapter_fetch(jql or SCAN_JQL)
         except Exception as e:
             raise RuntimeError(
-                "Không lấy được dữ liệu Live Jira — cần JIRA_BASE_URL/JIRA_PAT "
-                f"hợp lệ trong runtime và mạng tới Jira. Hãy dùng Snapshot. ({type(e).__name__}: {e})")
+                "Could not fetch Live Jira data — needs valid JIRA_BASE_URL/JIRA_PAT "
+                f"in the runtime and network access to Jira. Use Snapshot instead. ({type(e).__name__}: {e})")
     if not snapshot_file:
         raise ValueError("snapshot_file is required when source != 'live'")
     return [normalize_issue(i) for i in _load_issues(snapshot_file)]
@@ -158,7 +158,7 @@ def run_scan(source: str = "snapshot", snapshot_file: Optional[str] = None,
             severity = "warn"
         else:
             severity = "clean"
-        summary = (f"{len(tickets)} tickets · {len(violations)} vi phạm "
+        summary = (f"{len(tickets)} tickets · {len(violations)} violations "
                    f"(L1={counts['1']} L2={counts['2']} L3={counts['3']} L0={counts['0']})")
 
         payload = {
@@ -180,7 +180,7 @@ def run_scan(source: str = "snapshot", snapshot_file: Optional[str] = None,
         return payload
     except Exception as e:
         if record:
-            webstore.finish_task(task_id, "fail", f"Scan lỗi: {e}", {"error": str(e)})
+            webstore.finish_task(task_id, "fail", f"Scan error: {e}", {"error": str(e)})
         raise
 
 
@@ -198,8 +198,8 @@ def _build_tickets_for_report(source: str, snapshot_file: Optional[str],
             return jf.fetch_active_sprint(project)
         except Exception as e:
             raise RuntimeError(
-                "Không lấy được dữ liệu Live Jira — cần JIRA_BASE_URL/JIRA_PAT "
-                f"hợp lệ trong runtime và mạng tới Jira. Hãy dùng Snapshot. ({type(e).__name__}: {e})")
+                "Could not fetch Live Jira data — needs valid JIRA_BASE_URL/JIRA_PAT "
+                f"in the runtime and network access to Jira. Use Snapshot instead. ({type(e).__name__}: {e})")
     return [_dict_to_ticket(normalize_issue(i)) for i in _load_issues(snapshot_file)]
 
 
@@ -214,7 +214,7 @@ def _report_html(report: DailyReport) -> str:
                 teams_sender.CHANNEL_TITLE[ch], date_str, groups,
                 team_split=(ch == CH_QE)))
     if not pages:
-        return "<p style='font-family:sans-serif;padding:24px'>Không có vi phạm 🎉</p>"
+        return "<p style='font-family:sans-serif;padding:24px'>No violations 🎉</p>"
     return "\n<hr style='margin:32px 0'>\n".join(pages)
 
 
@@ -249,18 +249,18 @@ def send_report(source: str = "snapshot", snapshot_file: Optional[str] = None,
                        for c in teams_sender.CHANNEL_FLOW_ENV)
 
         if report.is_empty():
-            status, summary = "pass", "Không có vi phạm — không gửi gì 🎉"
+            status, summary = "pass", "No violations — nothing to send 🎉"
         elif dry_run:
             status = "warn"
-            summary = f"Dry-run — preview {len(channels)} channel, không gửi thật"
+            summary = f"Dry-run — preview {len(channels)} channel(s), not actually sent"
         elif not creds_ok:
             status = "warn"
-            summary = ("Chưa cấu hình TEAMS_FLOW_* (Power Automate Flow URL) — "
-                       "không gửi được. Đã render preview.")
+            summary = ("TEAMS_FLOW_* (Power Automate Flow URL) not configured — "
+                       "cannot send. Preview rendered.")
         else:
             teams_sender.send(report, dry_run=False)
             status = "pass"
-            summary = f"Đã gửi report tới {len(channels)} channel: {', '.join(channels)}"
+            summary = f"Sent report to {len(channels)} channel: {', '.join(channels)}"
 
         payload = {
             "scan_date": scan_date, "source": source, "snapshot_file": snapshot_file,
@@ -273,7 +273,7 @@ def send_report(source: str = "snapshot", snapshot_file: Optional[str] = None,
         return payload
     except Exception as e:
         if record:
-            webstore.finish_task(task_id, "fail", f"Gửi report lỗi: {e}", {"error": str(e)})
+            webstore.finish_task(task_id, "fail", f"Send report error: {e}", {"error": str(e)})
         raise
 
 
@@ -326,13 +326,13 @@ def get_insights(question: Optional[str] = None, record: bool = True) -> dict:
                f"Hãy phân tích trực tiếp dữ liệu này, KHÔNG cần gọi tool:\n\n{ctx}")
         text = run_agent(msg, verbose=False)
         status = "pass" if text else "warn"
-        summary = "Đã sinh insight từ lịch sử vi phạm" if text else "Không có dữ liệu / không sinh được insight"
+        summary = "Generated insights from violation history" if text else "No data / could not generate insights"
         if record:
             webstore.finish_task(task_id, status, summary, {"insights": text, "data": data})
         return {"insights": text, "data": data, "task_id": task_id, "status": status}
     except Exception as e:
         if record:
-            webstore.finish_task(task_id, "fail", f"Insight lỗi: {e}", {"error": str(e)})
+            webstore.finish_task(task_id, "fail", f"Insight error: {e}", {"error": str(e)})
         raise
 
 
@@ -454,7 +454,7 @@ def chat_stream(message: str, source: str = "snapshot",
         status = "pass" if full.strip() else "warn"
         webstore.finish_task(task_id, status, (full or "")[:160], {"reply": full})
     except Exception as e:
-        webstore.finish_task(task_id, "fail", f"Chat lỗi: {e}", {"error": str(e)})
+        webstore.finish_task(task_id, "fail", f"Chat error: {e}", {"error": str(e)})
         yield {"type": "done", "text": f"Lỗi: {e}"}
 
 
@@ -476,5 +476,5 @@ def chat(message: str, source: str = "snapshot", snapshot_file: Optional[str] = 
         return {"reply": text, "task_id": task_id, "status": status}
     except Exception as e:
         if record:
-            webstore.finish_task(task_id, "fail", f"Chat lỗi: {e}", {"error": str(e)})
+            webstore.finish_task(task_id, "fail", f"Chat error: {e}", {"error": str(e)})
         raise
