@@ -51,8 +51,9 @@ except ImportError:
 _scheduler = None
 
 
-def _run_scheduled(sched_id: int) -> dict:
-    """Job body — re-reads the schedule each fire so edits take effect.
+def _run_scheduled(sched_id: int, manual: bool = False) -> dict:
+    """Chạy 1 schedule. manual=True khi user bấm 'Chạy ngay' (ghi log là thủ công);
+    manual=False khi cron tự kích hoạt (ghi log là tự động theo lịch).
     Returns {status, summary, action} so the 'Run now' API can report outcome."""
     sched = webstore.get_schedule(sched_id)
     if not sched or not sched["enabled"]:
@@ -61,11 +62,11 @@ def _run_scheduled(sched_id: int) -> dict:
         if sched["action"] == "send":
             res = qa_service.send_report(
                 source=sched["source"], snapshot_file=sched["snapshot_file"],
-                jql=sched["jql"], task_type="scheduled_send")
+                jql=sched["jql"], task_type="send" if manual else "scheduled_send")
         else:
             res = qa_service.run_scan(
                 source=sched["source"], snapshot_file=sched["snapshot_file"],
-                jql=sched["jql"], task_type="scheduled_scan")
+                jql=sched["jql"], task_type="scan" if manual else "scheduled_scan")
         st = res.get("status", "pass")
         webstore.mark_schedule_run(sched_id, st)
         return {"status": st, "summary": res.get("summary", ""), "action": sched["action"]}
@@ -317,8 +318,9 @@ def api_schedule_toggle(sched_id: int):
 
 @app.post("/api/schedules/{sched_id}/run")
 def api_schedule_run_now(sched_id: int):
+    # 'Chạy ngay' = thao tác thủ công → ghi log type send/scan (không phải scheduled_*)
     # sync def → runs in threadpool (blocking SMTP/scan won't stall the event loop)
-    return _run_scheduled(sched_id)
+    return _run_scheduled(sched_id, manual=True)
 
 
 if __name__ == "__main__":
