@@ -326,6 +326,7 @@ def _normalize(issue: dict) -> Ticket:
         blocked=status_name.lower() in STATUS_BLOCKED,
         is_bug=("bug" in (f.get("issuetype") or {}).get("name", "").lower()
                 or "defect" in (f.get("issuetype") or {}).get("name", "").lower()),
+        issue_type=(f.get("issuetype") or {}).get("name") or None,
         component=component,
         sprints=_parse_sprints(f.get(SPRINT_FIELD)),
     )

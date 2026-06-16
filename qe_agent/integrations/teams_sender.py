@@ -172,6 +172,28 @@ def _status_chip(status) -> str:
             f'vertical-align:middle">{status or "—"}</span>')
 
 
+# Màu chip type (bg, border, text) — phân biệt Bug/Story/Task bằng màu.
+_TYPE_CHIP = {
+    "bug":      ("#ffebee", "#ef9a9a", "#c62828"),
+    "defect":   ("#ffebee", "#ef9a9a", "#c62828"),
+    "story":    ("#e8f5e9", "#a5d6a7", "#2e7d32"),
+    "task":     ("#e3f2fd", "#90caf9", "#1565c0"),
+    "sub-task": ("#ede7f6", "#b39ddb", "#5e35b1"),
+    "subtask":  ("#ede7f6", "#b39ddb", "#5e35b1"),
+}
+
+
+def _type_chip(issue_type) -> str:
+    """Chip loại issue (Bug/Story/Task) cạnh ticket id, màu theo loại."""
+    if not issue_type:
+        return ""
+    bg, border, fg = _TYPE_CHIP.get(issue_type.lower(), ("#f0f0f0", "#ddd", "#555"))
+    return (f'<span style="display:inline-block;font-size:10px;font-weight:700;'
+            f'color:{fg};background:{bg};border:1px solid {border};border-radius:9px;'
+            f'padding:1px 8px;margin-left:6px;white-space:nowrap;'
+            f'vertical-align:middle">{issue_type}</span>')
+
+
 def _level_table(level: int, groups: list[dict]) -> str:
     """Gộp TẤT CẢ rule trong 1 level thành MỘT bảng:
         Ticket | Vấn đề (rule + lý do) | Owner | QE PIC
@@ -200,7 +222,7 @@ def _level_table(level: int, groups: list[dict]) -> str:
             no_qe = " <b style=color:#d32f2f>[NoQE]</b>" if t.no_qe else ""
             rows_html += (
                 f'<tr>'
-                f'<td {td}>{_ticket_link(t)}{_status_chip(t.status)}'
+                f'<td {td}>{_ticket_link(t)}{_type_chip(t.issue_type)}{_status_chip(t.status)}'
                 f'<div style="font-size:11px;color:#777;margin-top:3px;max-width:300px">{t.title or ""}</div></td>'
                 f'<td {td}>{issue}</td>'
                 f'<td {td}>{t.assignee or "—"}{no_qe}</td>'
@@ -449,22 +471,16 @@ def _component_partitions(groups: list[dict]) -> list[tuple[str, list[dict]]]:
 def _send_channel_pages(to_email: str, channel_title: str, date_str: str,
                         groups: list[dict], team_split: bool,
                         gmail_user: str, gmail_pass: str, max_rows: int) -> int:
-    """Phân trang 1 (sub)report rồi gửi từng part. Trả về số email đã gửi."""
-    pages = _paginate(groups, max_rows)
-    total = len(pages)
-    for idx, page_groups in enumerate(pages, 1):
-        levels = {g["level"] for g in page_groups}
-        prefix = "🔴" if 1 in levels else ("🟠" if 2 in levels else "📋")
-        part = f" (Phần {idx}/{total})" if total > 1 else ""
-        subject = f"{prefix} QE Watchdog {date_str} — {channel_title}{part}"
-        html = _build_html(channel_title, date_str, page_groups,
-                           team_split=team_split,
-                           page=idx if total > 1 else None,
-                           total_pages=total if total > 1 else None)
-        text = _build_text(channel_title, date_str, page_groups)
-        _send_one(to_email, subject, text, html, gmail_user, gmail_pass)
-        print(f"[sent] {subject} → {to_email}")
-    return total
+    """Gửi TOÀN BỘ report của 1 kênh trong DUY NHẤT 1 email (không tách part dù
+    data dài). Lưu ý: email rất lớn có thể bị Gmail clip (~102KB) / Teams cắt."""
+    levels = {g["level"] for g in groups}
+    prefix = "🔴" if 1 in levels else ("🟠" if 2 in levels else "📋")
+    subject = f"{prefix} QE Watchdog {date_str} — {channel_title}"
+    html = _build_html(channel_title, date_str, groups, team_split=team_split)
+    text = _build_text(channel_title, date_str, groups)
+    _send_one(to_email, subject, text, html, gmail_user, gmail_pass)
+    print(f"[sent] {subject} → {to_email}")
+    return 1
 
 
 # ---------------------------------------------------------------------------
@@ -508,17 +524,8 @@ def send(report: DailyReport, dry_run: bool = False) -> None:
             print(f"[skip] {CHANNEL_EMAIL_ENV[ch]} chưa set — bỏ qua {ch}")
             continue
 
-        # QE Daily: nếu report quá dài cho 1 email → tách ticket theo component
-        # (MS / CRM) thành các email RIÊNG; mỗi component còn dài sẽ tự phân trang.
-        if ch == CH_QE and _too_long(groups, max_rows):
-            for label, sub_groups in _component_partitions(groups):
-                _send_channel_pages(to_email, f"{CHANNEL_TITLE[ch]} · {label}",
-                                    date_str, sub_groups, team_split=False,
-                                    gmail_user=gmail_user, gmail_pass=gmail_pass,
-                                    max_rows=max_rows)
-            continue
-
-        # Vừa 1 email (hoặc kênh Dev): gửi như cũ (QE Daily vẫn hiện MS+CRM gộp)
+        # Luôn gửi TRỌN report của kênh trong 1 email (QE Daily vẫn hiện MS+CRM
+        # gộp). Không tách theo component / không phân trang dù data dài.
         _send_channel_pages(to_email, CHANNEL_TITLE[ch], date_str, groups,
                             team_split=(ch == CH_QE),
                             gmail_user=gmail_user, gmail_pass=gmail_pass,

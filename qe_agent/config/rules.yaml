@@ -47,6 +47,7 @@ rules:
       and (is_empty(sandbox_date)
       or is_empty(test_start_date)
       or is_empty(test_complete_date))
+      and status_rank < rank('Done')
     recipients: [qe_pic]
     channels: [qe_channel]
     message: "{key} thiếu ngày ({missing_dates}) — vui lòng điền đủ."
@@ -94,13 +95,13 @@ rules:
     type: reactive
     condition: >
       sandbox_date == today
-      and status not in ('Walkthrough', 'Ready for testing')
+      and status_rank < rank('Walkthrough')
     actions:
       - add_label: "NoQE"
       - add_label: "NoQC"
     recipients: [qe_pic, assignee]
     channels: [dev_channel]
-    message: "{key} đến sandbox date ({sandbox_date}) nhưng đang {status} — chưa thể start test."
+    message: "{key} đến sandbox date ({sandbox_date}) nhưng đang {status}"
 
   # ── LEVEL 2: RISK (không commit được theo plan) ────────────────────────────
   - id: L2_OVERDUE_STILL_INREVIEW

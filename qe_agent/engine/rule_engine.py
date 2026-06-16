@@ -14,8 +14,15 @@ STATUS_RANK = {
     "Blocked": 1, "InDev": 1, "In Progress": 1,
     "Walkthrough": 2, "Ready for testing": 3,
     "InTest": 4, "InReview": 5,
-    "Done": 6, "Resolved": 6, "Live": 7, "Cancelled": 7,
+    "Done": 6, "Resolved": 6, "Closed": 6, "Live": 7, "Cancelled": 7,
 }
+# Lookup case-insensitive — Jira có thể trả 'CLOSED'/'closed' khác casing với key.
+_STATUS_RANK_LC = {k.lower(): v for k, v in STATUS_RANK.items()}
+
+
+def status_rank_of(status) -> int:
+    """Rank của 1 status, không phân biệt hoa/thường (mặc định 0 nếu lạ)."""
+    return _STATUS_RANK_LC.get((status or "").strip().lower(), 0)
 
 
 # ---------------------------------------------------------------- helpers
@@ -68,8 +75,8 @@ class RuleEngine:
             "timedelta": timedelta,
             "is_empty": is_empty,
             "workdays_add": lambda d, n: workdays_add(d, n, self.holidays),
-            "rank": lambda s: STATUS_RANK.get(s, 0),
-            "status_rank": STATUS_RANK.get(t.get("status"), 0),
+            "rank": status_rank_of,
+            "status_rank": status_rank_of(t.get("status")),
             "key": t.get("key"),
             "status": t.get("status"),
             "story_point": t.get("story_point"),

@@ -71,6 +71,7 @@ class Ticket:
     no_qe: bool = False                      # NoQE flag (từ label)
     blocked: bool = False
     is_bug: bool = False                     # roadmap filter includes bugs
+    issue_type: Optional[str] = None         # Jira issuetype name (Bug/Story/Task)
     component: Optional[str] = None          # component name (routing MS/CRM)
     sprints: list[str] = field(default_factory=list)  # tên các sprint ticket thuộc
 
