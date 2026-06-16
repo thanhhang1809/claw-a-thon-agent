@@ -11,3 +11,4 @@ venv/
 greennode-agentbase-skills/
 report.html
 result.json
+.agentbase/

@@ -20,9 +20,13 @@ from engine.models import (
     CH_QE, CH_DEV_MS, CH_DEV_CRM, dev_channels_for,
 )
 
-LEVEL_NAME = {-1: "📋 CHECKLIST", 0: "⚪ DATA", 1: "🔴 LEVEL 1 — Violent", 2: "🟠 LEVEL 2 — Risk", 3: "🟡 LEVEL 3 — Commit Risk"}
+LEVEL_NAME = {-1: "📋 CHECKLIST", 0: "⚪ DATA", 1: "🔴 LEVEL 1 — VIOLATION", 2: "🟠 LEVEL 2 — RISK", 3: "🟡 LEVEL 3 — WATCH"}
 LEVEL_COLOR = {-1: "#1565c0", 0: "#757575", 1: "#d32f2f", 2: "#e65100", 3: "#f9a825"}
+# Màu chữ trên bar level — mặc định trắng cho mọi level (theo yêu cầu).
+LEVEL_TEXT = {}
 LEVEL_DOT = {-1: "🔹", 0: "⚪", 1: "🔴", 2: "🟠", 3: "🟡"}
+# Màu khung header (tách khỏi #1565c0 của CHECKLIST để không tranh chấp severity).
+HEADER_COLOR = "#263238"
 # Thứ tự hiển thị theo mức nghiêm trọng (L1 trước → checklist cuối) để phần
 # preview (Teams cắt ngắn) hiện cái quan trọng nhất trước.
 _LEVEL_SORT = {1: 0, 2: 1, 3: 2, 0: 3, -1: 4}
@@ -46,7 +50,7 @@ CHANNEL_FLOW_ENV = {   # (dự phòng) Power Automate Flow webhook — chưa dù
     CH_DEV_CRM: "TEAMS_FLOW_DEV_CRM",
 }
 CHANNEL_TITLE = {
-    CH_QE: "QE Daily", CH_DEV_MS: "Dev — MS", CH_DEV_CRM: "Dev — CRM",
+    CH_QE: "QE Daily", CH_DEV_MS: "MS daily", CH_DEV_CRM: "CRM daily",
 }
 
 
@@ -64,13 +68,32 @@ def _mention(name, no_qe=False):
 # Nhóm: theo level (DATA/L1/L2/L3) rồi theo rule_id — giống ảnh mẫu.
 # Simple filters (start/complete/sandbox/blocked) là các "rule_id" ảo.
 # ---------------------------------------------------------------------------
-# pseudo rule_id cho simple filters
+# pseudo rule_id cho simple filters -> (checklist id trong rules.yaml, emoji, fallback)
 SIMPLE_RULES = {
-    "CHECK_TEST_START":    ("📋 Test Start Today", -1),
-    "CHECK_TEST_COMPLETE": ("✅ Test Complete Today", -1),
-    "CHECK_SANDBOX":       ("📦 Sandbox Tomorrow", -1),
-    "CHECK_BLOCKED":       ("⛔ Blocked", -1),
+    "CHECK_TEST_START":    ("CL_TEST_START_TODAY",    "📋", "Test Start Today"),
+    "CHECK_TEST_COMPLETE": ("CL_TEST_DUE_TODAY",       "✅", "Test Complete Today"),
+    "CHECK_SANDBOX":       ("CL_SANDBOX_DUE_TOMORROW", "📦", "Sandbox Tomorrow"),
+    "CHECK_BLOCKED":       ("CL_BLOCKED_TICKETS",      "⛔", "Blocked"),
 }
+
+
+def _checklist_labels() -> dict:
+    """Heading checklist lấy theo 'name' trong rules.yaml (emoji + name).
+    Fallback về nhãn cũ nếu không đọc được file / thiếu checklist."""
+    import yaml
+    names = {}
+    try:
+        with open(paths.RULES_YAML, encoding="utf-8") as f:
+            cfg = yaml.safe_load(f) or {}
+        names = {c["id"]: c.get("name", "") for c in cfg.get("checklists", [])}
+    except Exception:
+        pass
+    return {pid: f"{emoji} {names.get(cl_id) or fallback}"
+            for pid, (cl_id, emoji, fallback) in SIMPLE_RULES.items()}
+
+
+# Nạp 1 lần lúc import (rules.yaml tĩnh trong vòng đời tiến trình).
+CHECKLIST_LABEL = _checklist_labels()
 
 
 def route(report: DailyReport) -> dict[str, list]:
@@ -89,19 +112,20 @@ def route(report: DailyReport) -> dict[str, list]:
             if reason:
                 g["rows"][tid][1].append(reason)
 
-    # --- simple filters (checklist thông tin, level -1) ---
+    # --- simple filters (checklist thông tin, level -1) — heading lấy theo
+    #     'name' của checklist trong rules.yaml (xem CHECKLIST_LABEL) ---
     for t in report.need_start_today:
         add([CH_QE] + dev_channels_for(t.component), -1, "CHECK_TEST_START",
-            "📋 Test Start Today", t)
+            CHECKLIST_LABEL["CHECK_TEST_START"], t)
     for t in report.need_complete_today:
         add([CH_QE] + dev_channels_for(t.component), -1, "CHECK_TEST_COMPLETE",
-            "✅ Test Complete Today", t)
+            CHECKLIST_LABEL["CHECK_TEST_COMPLETE"], t)
     for t in report.sandbox_tomorrow:
         add(dev_channels_for(t.component), -1, "CHECK_SANDBOX",
-            "📦 Sandbox Tomorrow", t)
+            CHECKLIST_LABEL["CHECK_SANDBOX"], t)
     for t in report.blocked:
         add(dev_channels_for(t.component), -1, "CHECK_BLOCKED",
-            "⛔ Blocked", t)
+            CHECKLIST_LABEL["CHECK_BLOCKED"], t)
 
     # --- rule results theo level ---
     for results, lvl in [(report.level0, 0), (report.level1, 1),
@@ -130,7 +154,7 @@ def route(report: DailyReport) -> dict[str, list]:
 
 
 # ---------------------------------------------------------------------------
-# HTML builder — bảng nhóm theo LEVEL -> rule_id, cột có Status
+# HTML builder — mỗi LEVEL = 1 bảng gộp các rule; status là chip cạnh ticket
 # ---------------------------------------------------------------------------
 def _ticket_link(t: Ticket) -> str:
     base = os.getenv("JIRA_BASE_URL", "").rstrip("/")
@@ -140,56 +164,76 @@ def _ticket_link(t: Ticket) -> str:
     return f'<span style="font-family:monospace;font-weight:700">{t.id}</span>'
 
 
-def _rule_table(group: dict) -> str:
-    """Một rule = 1 bảng: Ticket | Status | Assignee | QE PIC."""
-    th = ('style="text-align:left;padding:6px 10px;font-size:11px;color:#666;'
-          'background:#f0f0f0;border-bottom:1px solid #ddd;white-space:nowrap"')
-    td = 'style="padding:6px 10px;font-size:13px;border-bottom:1px solid #eee;vertical-align:top"'
+def _status_chip(status) -> str:
+    """Status thành chip nhỏ cạnh ticket id (thay cho 1 cột Status riêng)."""
+    return (f'<span style="display:inline-block;font-size:10px;color:#546e7a;'
+            f'background:#eceff1;border:1px solid #cfd8dc;border-radius:9px;'
+            f'padding:1px 8px;margin-left:6px;white-space:nowrap;'
+            f'vertical-align:middle">{status or "—"}</span>')
+
+
+def _level_table(level: int, groups: list[dict]) -> str:
+    """Gộp TẤT CẢ rule trong 1 level thành MỘT bảng:
+        Ticket | Vấn đề (rule + lý do) | Owner | QE PIC
+    Status hiển thị dạng chip nhỏ cạnh ticket id."""
+    th = ('style="text-align:left;padding:6px 10px;font-size:12px;font-weight:700;'
+          'color:#666;background:#f0f0f0;border-bottom:1px solid #ddd;white-space:nowrap"')
+    td = 'style="padding:7px 10px;font-size:13px;border-bottom:1px solid #eee;vertical-align:top"'
+    is_checklist = level == -1
+    issue_header = "Mục checklist" if is_checklist else "Issue"
 
     rows_html = ""
-    for row in group["rows"]:
-        t = row["ticket"]
-        rows_html += (
-            f'<tr>'
-            f'<td {td}>{_ticket_link(t)}'
-            f'<div style="font-size:11px;color:#777;margin-top:2px;max-width:260px">{t.title or ""}</div></td>'
-            f'<td {td}><span style="font-size:12px;color:#555">{t.status or "—"}</span></td>'
-            f'<td {td}>{t.assignee or "—"}{" <b style=color:#d32f2f>[NoQE]</b>" if t.no_qe else ""}</td>'
-            f'<td {td}>{t.qe_pic or "—"}</td>'
-            f'</tr>'
-        )
-
-    n = len(group["rows"])
-    heading = group["label"]  # checklist: nhãn; rule: rule_name (fallback rule_id)
+    for g in groups:
+        label = g["label"]  # checklist: nhãn; rule: rule_name (fallback rule_id)
+        for row in g["rows"]:
+            t = row["ticket"]
+            # cột "Issue": chỉ show lý do vi phạm (bỏ tên rule). Checklist không
+            # có reason → fallback về nhãn để cell không trống.
+            reasons = row.get("reasons") or []
+            if reasons:
+                # 1 màu trung tính dễ đọc; mức độ severity đã có ở bar level.
+                issue = "".join(
+                    f'<div style="font-size:12px;color:#455a64;'
+                    f'line-height:1.45">{r}</div>' for r in reasons)
+            else:
+                issue = f'<div style="color:#333">{label}</div>'
+            no_qe = " <b style=color:#d32f2f>[NoQE]</b>" if t.no_qe else ""
+            rows_html += (
+                f'<tr>'
+                f'<td {td}>{_ticket_link(t)}{_status_chip(t.status)}'
+                f'<div style="font-size:11px;color:#777;margin-top:3px;max-width:300px">{t.title or ""}</div></td>'
+                f'<td {td}>{issue}</td>'
+                f'<td {td}>{t.assignee or "—"}{no_qe}</td>'
+                f'<td {td}>{t.qe_pic or "—"}</td>'
+                f'</tr>'
+            )
     return (
-        f'<div style="font-size:12px;color:#444;font-weight:600;margin:10px 0 4px">'
-        f'{heading} <span style="color:#999;font-weight:400">({n} ticket)</span></div>'
         f'<table style="border-collapse:collapse;width:100%;background:#fff;'
         f'border:1px solid #e0e0e0;border-radius:4px;overflow:hidden">'
-        f'<tr><th {th}>Ticket</th><th {th}>Status</th><th {th}>Assignee</th>'
-        f'<th {th}>QE PIC</th></tr>'
+        f'<tr><th {th}>Ticket</th><th {th}>{issue_header}</th>'
+        f'<th {th}>Assignee</th><th {th}>QE PIC</th></tr>'
         f'{rows_html}</table>'
     )
 
 
 def _level_blocks(groups: list[dict]) -> str:
-    """Render các khối theo level → rule (trả về chuỗi HTML)."""
+    """Render các khối theo level — mỗi level là 1 bar + 1 bảng gộp các rule."""
     by_level: dict[int, list] = defaultdict(list)
     for g in groups:
         by_level[g["level"]].append(g)
     out = ""
     for level in _ordered_levels(by_level):
         color = LEVEL_COLOR.get(level, "#757575")
+        text = LEVEL_TEXT.get(level, "#fff")
         total = sum(len(g["rows"]) for g in by_level[level])
         suffix = "ticket" if level == -1 else "vi phạm"
         out += (
-            f'<div style="background:{color};color:#fff;padding:9px 14px;'
-            f'border-radius:6px;font-weight:700;font-size:13px;margin:18px 0 8px">'
+            f'<div style="background:{color};color:{text};padding:9px 14px;'
+            f'border-radius:6px;font-weight:700;font-size:14px;margin:18px 0 8px">'
             f'{LEVEL_NAME.get(level, "?")} &nbsp;'
             f'<span style="opacity:.85;font-weight:400">— {total} {suffix}</span></div>'
         )
-        for g in by_level[level]:
-            out += _rule_table(g)
+        out += _level_table(level, by_level[level])
     return out
 
 
@@ -214,7 +258,7 @@ def _team_split_blocks(groups: list[dict]) -> str:
         total = sum(len(g["rows"]) for g in tgroups)
         out += (
             f'<div style="background:{color};color:#fff;padding:11px 16px;'
-            f'border-radius:8px;font-weight:800;font-size:15px;margin:24px 0 6px">'
+            f'border-radius:8px;font-weight:800;font-size:16px;margin:24px 0 6px">'
             f'{team_name} <span style="opacity:.85;font-weight:400">— {total} ticket</span></div>'
         )
         out += _level_blocks(tgroups) if tgroups else \
@@ -236,9 +280,8 @@ def _build_html(channel_title: str, date_str: str, groups: list[dict],
 <body style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;
              background:#f5f5f5;margin:0;padding:20px">
 <div style="max-width:760px;margin:0 auto">
-  <div style="background:#1565c0;border-radius:10px 10px 0 0;padding:20px 24px;color:#fff">
-    <div style="font-size:18px;font-weight:700">🛡️ QE Watchdog — {channel_title}{part_badge}</div>
-    <div style="font-size:13px;opacity:.85;margin-top:4px">📅 {date_str}</div>
+  <div style="background:{HEADER_COLOR};border-radius:10px 10px 0 0;padding:14px 24px;color:#fff">
+    <div style="font-size:14px;font-weight:700">📅 {date_str}{part_badge}</div>
   </div>
   <div style="background:#fff;border-radius:0 0 10px 10px;padding:18px 24px;
               border:1px solid #e0e0e0;border-top:none">
@@ -304,7 +347,7 @@ def _max_bytes_per_email() -> int:
 
 def _group_bytes(group: dict) -> int:
     """Ước lượng kích thước HTML render của 1 group (để chia theo dung lượng)."""
-    return len(_rule_table(group).encode("utf-8"))
+    return len(_level_table(group["level"], [group]).encode("utf-8"))
 
 
 def _split_group(group: dict, max_rows: int, max_bytes: int) -> list[dict]:

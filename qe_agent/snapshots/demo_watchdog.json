@@ -1,0 +1,168 @@
+{
+  "jql": "DEMO — QE Watchdog compact (1 email/channel)",
+  "fetched_at": "2026-06-16",
+  "issues": [
+    {
+      "key": "GE-9001",
+      "fields": {
+        "summary": "[MS][Promo at Cashier] Add reward config UI",
+        "status": {
+          "name": "In Dev"
+        },
+        "assignee": {
+          "name": "dev01",
+          "displayName": "dev01"
+        },
+        "labels": [],
+        "components": [
+          {
+            "name": "Marketing Solutions"
+          }
+        ],
+        "customfield_10801": 3,
+        "customfield_13703": null,
+        "customfield_13704": null,
+        "customfield_11702": null,
+        "customfield_10418": {
+          "name": "hangdtt4",
+          "displayName": "hangdtt4"
+        }
+      }
+    },
+    {
+      "key": "GE-9002",
+      "fields": {
+        "summary": "[MS][Reservation] Integrate booking with cashier",
+        "status": {
+          "name": "In Dev"
+        },
+        "assignee": {
+          "name": "dev01",
+          "displayName": "dev01"
+        },
+        "labels": [],
+        "components": [
+          {
+            "name": "Marketing Solutions"
+          }
+        ],
+        "customfield_10801": 5,
+        "customfield_13703": "2026-06-12",
+        "customfield_13704": "2026-06-30",
+        "customfield_11702": "2026-06-10",
+        "customfield_10418": {
+          "name": "hangdtt4",
+          "displayName": "hangdtt4"
+        }
+      }
+    },
+    {
+      "key": "GE-9003",
+      "fields": {
+        "summary": "[CRM][Auth API] Support TikTok Hub integration",
+        "status": {
+          "name": "Ready for testing"
+        },
+        "assignee": {
+          "name": "dev01",
+          "displayName": "dev01"
+        },
+        "labels": [],
+        "components": [
+          {
+            "name": "CRM"
+          }
+        ],
+        "customfield_10801": 5,
+        "customfield_13703": "2026-06-30",
+        "customfield_13704": "2026-06-12",
+        "customfield_11702": "2026-06-08",
+        "customfield_10418": {
+          "name": "hangdtt4",
+          "displayName": "hangdtt4"
+        }
+      }
+    },
+    {
+      "key": "GE-9004",
+      "fields": {
+        "summary": "[CRM][Messaging] Breakdown token empty error",
+        "status": {
+          "name": "Walkthrough"
+        },
+        "assignee": {
+          "name": "dev01",
+          "displayName": "dev01"
+        },
+        "labels": [],
+        "components": [
+          {
+            "name": "CRM"
+          }
+        ],
+        "customfield_10801": 3,
+        "customfield_13703": "2026-06-30",
+        "customfield_13704": "2026-06-16",
+        "customfield_11702": "2026-06-08",
+        "customfield_10418": {
+          "name": "hangdtt4",
+          "displayName": "hangdtt4"
+        }
+      }
+    },
+    {
+      "key": "GE-9005",
+      "fields": {
+        "summary": "[MS][Promo at Cashier] Voucher TnC at cashier",
+        "status": {
+          "name": "In Test"
+        },
+        "assignee": {
+          "name": "dev01",
+          "displayName": "dev01"
+        },
+        "labels": [],
+        "components": [
+          {
+            "name": "Marketing Solutions"
+          }
+        ],
+        "customfield_10801": 3,
+        "customfield_13703": "2026-06-30",
+        "customfield_13704": "2026-06-16",
+        "customfield_11702": "2026-06-08",
+        "customfield_10418": {
+          "name": "hangdtt4",
+          "displayName": "hangdtt4"
+        }
+      }
+    },
+    {
+      "key": "GE-9006",
+      "fields": {
+        "summary": "[MS][Loadtest] Support loadtest for Promotion at Cashier",
+        "status": {
+          "name": "In Dev"
+        },
+        "assignee": {
+          "name": "dev01",
+          "displayName": "dev01"
+        },
+        "labels": [],
+        "components": [
+          {
+            "name": "Marketing Solutions"
+          }
+        ],
+        "customfield_10801": 5,
+        "customfield_13703": "2026-06-16",
+        "customfield_13704": "2026-06-30",
+        "customfield_11702": "2026-06-20",
+        "customfield_10418": {
+          "name": "hangdtt4",
+          "displayName": "hangdtt4"
+        }
+      }
+    }
+  ]
+}

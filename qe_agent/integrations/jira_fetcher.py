@@ -39,6 +39,9 @@ _STATUS_MAP: dict[str, str] = {
 def _norm_status(raw: str) -> str:
     return _STATUS_MAP.get(raw.lower().strip(), raw)
 
+# Lọc issue type (Story/Task/Bug). Tách ra hằng để JQL các nơi dùng chung.
+ISSUETYPE_CLAUSE = os.getenv("JIRA_ISSUETYPE_CLAUSE", "issuetype in (Story, Task, Bug)")
+
 # JQL filter theo roadmap, gồm bug. Sửa cho đúng project/board của bạn.
 ROADMAP_JQL = os.getenv(
     "JIRA_JQL",
@@ -120,6 +123,37 @@ def fetch_by_keys(keys_or_links: list[str]) -> list[Ticket]:
         return []
     jql = f"key in ({','.join(keys)})"
     return _search(jql)
+
+
+def fetch_from_snapshot(name: str) -> list[Ticket]:
+    """Đọc ticket từ file snapshot JSON (demo offline, không gọi Jira thật).
+    Format: {"issues": [ {"key": ..., "fields": {...}} ]} — field value để THÔ
+    (string/number/None), giống REST Jira Server. Issue dạng phẳng cũng được
+    (tự bọc vào 'fields'). Dùng cho demo gửi email gọn (1 email / channel)."""
+    import json
+    snap = json.load(open(paths.snapshot_path(name), encoding="utf-8"))
+    issues = snap.get("issues", snap) if isinstance(snap, dict) else snap
+
+    def _unwrap_fields(f: dict) -> dict:
+        # Một số snapshot bọc giá trị field dạng {"value": X} (định dạng MCP/adapter).
+        # Bóc về X để _normalize đọc đúng (story_point, các ngày...). Giữ nguyên
+        # các dict khác như status {"name":...}, assignee {"name":...}.
+        out = {}
+        for k, v in f.items():
+            if isinstance(v, dict) and list(v.keys()) == ["value"]:
+                out[k] = v["value"]
+            else:
+                out[k] = v
+        return out
+
+    out = []
+    for i in issues:
+        if "fields" not in i:
+            i = {"key": i.get("key"), "fields": _unwrap_fields(i)}
+        else:
+            i = {**i, "fields": _unwrap_fields(i["fields"])}
+        out.append(_normalize(i))
+    return out
 
 
 def fetch_by_sprint(sprint: str | None = None, team: str | None = None) -> list[Ticket]:

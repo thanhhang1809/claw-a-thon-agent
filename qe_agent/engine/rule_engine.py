@@ -276,6 +276,7 @@ def run(tickets: list, today: date = None):
 
         result = RuleResult(
             rule_id=v["rule"],
+            rule_name=rule_def.get("name", ""),
             level=level_map.get(level_int, level_map[2]),
             ticket=ticket,
             reason=v["msg"],
@@ -313,6 +314,7 @@ def _handle_aggregate(v, rules_by_id, ticket_by_key, report, level_map):
 
     result = RuleResult(
         rule_id=v["rule"],
+        rule_name=rule_def.get("name", ""),
         level=level_map.get(level_int, level_map[2]),
         ticket=rep_ticket,
         reason=v["msg"],

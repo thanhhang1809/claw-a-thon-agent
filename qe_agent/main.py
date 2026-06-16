@@ -36,11 +36,16 @@ RETRY_WAIT = 30  # seconds
 def run_pipeline(use_mock: bool = False, dry_run: bool = False,
                  preview: bool = False,
                  keys: list[str] | None = None, sprint: str | None = None,
-                 use_sprint: bool = False, team: str | None = None) -> None:
-    log.info("Pipeline start (mock=%s, dry_run=%s, preview=%s)", use_mock, dry_run, preview)
+                 use_sprint: bool = False, team: str | None = None,
+                 snapshot: str | None = None) -> None:
+    log.info("Pipeline start (mock=%s, dry_run=%s, preview=%s, snapshot=%s)",
+             use_mock, dry_run, preview, snapshot)
 
     # 1. fetch
-    if use_mock:
+    if snapshot:
+        from integrations.jira_fetcher import fetch_from_snapshot
+        tickets = fetch_from_snapshot(snapshot)  # demo offline, gọn cho 1 email/channel
+    elif use_mock:
         tickets = generate_mock_tickets()
     elif keys:
         from integrations.jira_fetcher import fetch_by_keys
@@ -111,9 +116,14 @@ def start_scheduler() -> None:
         sys.exit(1)
 
     sched = BlockingScheduler(timezone="Asia/Ho_Chi_Minh")
+    # Nguồn dữ liệu mặc định cho daily report: snapshot (override qua env
+    # DEFAULT_REPORT_SNAPSHOT; để rỗng -> fetch active sprint từ Jira thật).
+    default_snapshot = os.getenv("DEFAULT_REPORT_SNAPSHOT", "hangdtt4_snapshot.json") or None
     # 9:00 sáng, thứ Hai đến thứ Sáu
-    sched.add_job(run_pipeline, CronTrigger(day_of_week="mon-fri", hour=9, minute=0))
-    log.info("Scheduler started — fires 09:00 Mon–Fri (Asia/Ho_Chi_Minh). Ctrl+C to stop.")
+    sched.add_job(run_pipeline, CronTrigger(day_of_week="mon-fri", hour=9, minute=0),
+                  kwargs={"snapshot": default_snapshot})
+    log.info("Scheduler started — fires 09:00 Mon–Fri (Asia/Ho_Chi_Minh), source=%s. Ctrl+C to stop.",
+             default_snapshot or "live active sprint")
     try:
         sched.start()
     except (KeyboardInterrupt, SystemExit):
@@ -135,6 +145,9 @@ def main() -> None:
                    help="liệt kê sprint đang active của board (in tên + id rồi thoát)")
     p.add_argument("--team", choices=["MS", "CRM"],
                    help="chỉ lấy ticket thuộc sprint của team MS hoặc CRM")
+    p.add_argument("--snapshot", metavar="FILE",
+                   help="demo offline từ file snapshot trong snapshots/ "
+                        "(vd: --snapshot demo_watchdog.json) — gọn, 1 email/channel")
     args = p.parse_args()
 
     if args.list_sprints:
@@ -150,10 +163,10 @@ def main() -> None:
         use_sprint = True
         sprint = args.sprint or None  # "" -> None -> open sprint
 
-    if args.once or args.keys or use_sprint or args.team or args.preview:
+    if args.once or args.keys or use_sprint or args.team or args.preview or args.snapshot:
         run_pipeline(use_mock=args.mock, dry_run=args.dry_run, preview=args.preview,
                      keys=args.keys, sprint=sprint, use_sprint=use_sprint,
-                     team=args.team)
+                     team=args.team, snapshot=args.snapshot)
     else:
         start_scheduler()
 
