@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="vi"><head><meta charset="UTF-8"><style>
+  *{margin:0;padding:0;box-sizing:border-box;font-family:-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Apple Color Emoji","Segoe UI Emoji",sans-serif;}
+  html,body{width:1280px;height:720px;overflow:hidden;}
+  .stage{
+    width:1280px;height:720px;position:relative;color:#fff;
+    background:
+      radial-gradient(1100px 620px at 80% -12%, rgba(0,104,255,.55), transparent 60%),
+      radial-gradient(820px 520px at 6% 118%, rgba(56,189,248,.30), transparent 60%),
+      linear-gradient(135deg,#071633 0%,#0a2050 45%,#0b2e74 100%);
+    padding:56px 64px;display:flex;flex-direction:column;justify-content:space-between;
+  }
+  .stage::before{content:"";position:absolute;inset:0;
+    background-image:radial-gradient(rgba(255,255,255,.06) 1.5px, transparent 1.5px);
+    background-size:34px 34px;opacity:.5;}
+
+  /* ---------- hero ---------- */
+  .hero{position:relative;display:flex;align-items:center;gap:30px;}
+  .logo{
+    width:128px;height:128px;border-radius:32px;flex:none;
+    background:linear-gradient(145deg,#0068ff,#2f8bff);
+    display:flex;align-items:center;justify-content:center;font-size:72px;
+    box-shadow:0 22px 54px rgba(0,104,255,.55), inset 0 2px 6px rgba(255,255,255,.35);position:relative;
+  }
+  .logo .shield{position:absolute;right:-10px;bottom:-10px;font-size:40px;filter:drop-shadow(0 6px 10px rgba(0,0,0,.4));}
+  .eyebrow{font-size:23px;font-weight:700;letter-spacing:1px;color:#7fd0ff;}
+  h1{font-size:82px;line-height:1;font-weight:800;letter-spacing:-2px;margin:6px 0 12px;text-shadow:0 6px 30px rgba(0,0,0,.35);}
+  .sub{font-size:27px;font-weight:500;color:#cfe2ff;max-width:1000px;}
+  .sub b{color:#ffc94a;font-weight:800;text-shadow:0 2px 20px rgba(255,201,74,.45);}
+
+  /* ---------- feature cards (điểm nhấn) ---------- */
+  .cards{position:relative;display:flex;gap:18px;}
+  .card{
+    flex:1;border-radius:22px;padding:24px 22px;
+    background:linear-gradient(180deg,rgba(255,255,255,.14),rgba(255,255,255,.05));
+    border:1px solid rgba(255,255,255,.18);box-shadow:0 16px 38px rgba(0,0,0,.24);
+  }
+  .card .ic{width:60px;height:60px;border-radius:16px;display:flex;align-items:center;
+    justify-content:center;font-size:31px;margin-bottom:16px;box-shadow:0 8px 20px rgba(0,0,0,.30);}
+  .card h3{font-size:25px;font-weight:800;margin-bottom:6px;white-space:nowrap;}
+  .card p{font-size:17px;color:#c4d8f5;font-weight:500;line-height:1.25;}
+
+  /* ---------- footer: level strip + credit ---------- */
+  .foot{position:relative;display:flex;align-items:center;justify-content:space-between;}
+  .levels{display:flex;gap:22px;font-size:19px;font-weight:600;color:#dbe7ff;}
+  .levels span{display:flex;align-items:center;gap:9px;}
+  .levels i{width:14px;height:14px;border-radius:50%;box-shadow:0 0 12px currentColor;}
+  .credit{display:inline-flex;align-items:center;gap:8px;font-size:15px;font-weight:600;color:#cfe0ff;
+    background:rgba(0,104,255,.22);border:1px solid rgba(127,208,255,.38);padding:8px 15px;border-radius:999px;}
+</style></head>
+<body>
+  <div class="stage">
+
+    <div class="hero">
+      <div class="logo">🐶<span class="shield">🛡️</span></div>
+      <div>
+        <div class="eyebrow">Zalopay · Team A.I rồi cũng khác</div>
+        <h1>QE Watchdog</h1>
+        <div class="sub">Auto-monitor processes &amp; send <b>automated daily reports</b> to each team on a scheduled basis</div>
+      </div>
+    </div>
+
+    <div class="cards">
+      <div class="card"><div class="ic" style="background:linear-gradient(145deg,#2563eb,#3b82f6)">💬</div>
+        <h3>AI Chat</h3><p>Ask anything about your sprint</p></div>
+      <div class="card"><div class="ic" style="background:linear-gradient(145deg,#e11d48,#f43f5e)">🔍</div>
+        <h3>Violation Scan</h3><p>Rule-based detection</p></div>
+      <div class="card"><div class="ic" style="background:linear-gradient(145deg,#7c3aed,#a855f7)">⏰</div>
+        <h3>Scheduler</h3><p>Auto-runs on time</p></div>
+      <div class="card"><div class="ic" style="background:linear-gradient(145deg,#0d9488,#14b8a6)">📧</div>
+        <h3>Teams Report</h3><p>Daily, to each team</p></div>
+      <div class="card"><div class="ic" style="background:linear-gradient(145deg,#d97706,#f59e0b)">📈</div>
+        <h3>Insights</h3><p>Trends &amp; risk signals</p></div>
+    </div>
+
+    <div class="foot">
+      <span class="credit">⚡ Powered by GreenNode AI Platform</span>
+      <div class="levels">
+        <span><i style="background:#cbd5e1;color:#cbd5e1"></i>L0 Data</span>
+        <span><i style="background:#ef4444;color:#ef4444"></i>L1 Violent</span>
+        <span><i style="background:#f59e0b;color:#f59e0b"></i>L2 Risk</span>
+        <span><i style="background:#facc15;color:#facc15"></i>L3 Watch</span>
+      </div>
+    </div>
+
+  </div>
+</body></html>
