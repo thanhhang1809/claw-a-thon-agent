@@ -462,10 +462,10 @@ VIEWS.sched=async()=>{
 // ================= HISTORY =================
 // Chỉ hiển thị 2 loại action: quét vi phạm (scan) và gửi report Teams (send)
 const HIST_TYPES={
-  scan:           {ic:'🔍', t:'Quét vi phạm'},
-  scheduled_scan: {ic:'🔍', t:'Quét vi phạm (định lịch)'},
-  send:           {ic:'📧', t:'Gửi report Teams'},
-  scheduled_send: {ic:'📧', t:'Gửi report Teams (định lịch)'},
+  scan:           {ic:'🔍', t:'Quét vi phạm — thủ công'},
+  scheduled_scan: {ic:'🔍', t:'Quét vi phạm — tự động theo lịch'},
+  send:           {ic:'📧', t:'Gửi report Teams — thủ công'},
+  scheduled_send: {ic:'📧', t:'Gửi report Teams — tự động theo lịch'},
 };
 // Status = KẾT QUẢ THỰC THI (không phải mức vi phạm)
 const RUN_STATUS={pass:{t:'Thành công',c:'emerald'},warn:{t:'Một phần',c:'amber'},fail:{t:'Lỗi',c:'red'},running:{t:'Đang chạy',c:'sky'}};
