@@ -105,7 +105,7 @@ def _dict_to_ticket(d: dict) -> Ticket:
         assignee=d.get("assignee") or "",
         qe_pic=d.get("qe_pic"),
         no_qe="NoQE" in (d.get("labels") or []),
-        component=None,
+        component=d.get("component"),
         sprints=[],
     )
 

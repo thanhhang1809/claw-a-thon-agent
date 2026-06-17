@@ -84,7 +84,8 @@ SCAN_JQL = (
 )
 
 REQUEST_FIELDS = ",".join(
-    ["summary", "status", "assignee", "labels", "issuetype"] + list(FIELD_MAP.values())
+    ["summary", "status", "assignee", "labels", "issuetype", "components"]
+    + list(FIELD_MAP.values())
 )
 
 # ---------------------------------------------------------------- mapping
@@ -114,6 +115,18 @@ def _extract_qe_pic(raw):
         if lb.lower() in KNOWN_QE_LABELS:
             return lb.lower()
     return None
+
+
+def _extract_component(raw):
+    """Component đầu tiên của issue (routing MS/CRM). Hỗ trợ cả REST/MCP, item dict/str."""
+    src = raw.get("fields", raw)
+    comps = src.get("components") or []
+    if not comps:
+        return None
+    first = comps[0]
+    if isinstance(first, dict):
+        return first.get("name")
+    return first or None
 
 
 def _extract_squad(raw, assignee):
@@ -150,6 +163,7 @@ def normalize_issue(raw):
         "assignee": assignee,
         "qe_pic": _extract_qe_pic(raw),
         "labels": src.get("labels") or [],
+        "component": _extract_component(raw),
     }
 
 
