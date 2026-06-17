@@ -312,6 +312,10 @@ def _build_html(channel_title: str, date_str: str, groups: list[dict],
 <div style="max-width:760px;margin:0 auto">
   <div style="background:{HEADER_COLOR};border-radius:10px 10px 0 0;padding:14px 24px;color:#fff">
     <div style="font-size:14px;font-weight:700">📅 {date_str}{part_badge}</div>
+    <div style="font-size:12px;margin-top:4px">
+      📍 <a href="{TEAMS_CHANNEL_URL}" style="color:#7ec8ff;font-weight:600;text-decoration:none">
+        Xem report trên Teams channel →</a>
+    </div>
   </div>
   <div style="background:#fff;border-radius:0 0 10px 10px;padding:18px 24px;
               border:1px solid #e0e0e0;border-top:none">
@@ -435,14 +439,18 @@ def _build_text(channel_title: str, date_str: str, groups: list[dict], max_rows:
     cnt = lambda lv: sum(len(g["rows"]) for g in by_level.get(lv, []))
     summary = f"🔴 {cnt(1)} · 🟠 {cnt(2)} · 🟡 {cnt(3)} · ⚪ {cnt(0)} vi phạm"
 
+    channel_line = f"📍 Xem report trên Teams channel: {TEAMS_CHANNEL_URL}"
+
     # Nếu data quá dài, chỉ show header + summary, không show detail (để Teams không cắt)
     if _too_long(groups, max_rows):
-        return (f"📋 QE Watchdog {date_str} — {channel_title}\n\n"
+        return (f"📋 QE Watchdog {date_str} — {channel_title}\n"
+                f"{channel_line}\n\n"
                 f"TÓM TẮT: {summary}\n\n"
                 f"⚠️  NỘI DUNG QUÁ DÀI — MỞ 'EMAIL GỐC' ĐỂ XEM ĐẦY ĐỦ")
 
     # Data bình thường: show full header + summary + detail
     lines = [f"📋 QE Watchdog {date_str} — {channel_title}",
+             channel_line,
              f"TÓM TẮT: {summary}  — xem 'Email gốc' để xem đầy đủ", ""]
     for level in _ordered_levels(by_level):
         total = sum(len(g["rows"]) for g in by_level[level])
