@@ -5,6 +5,11 @@
       "id": "1019998",
       "key": "GE-24799",
       "summary": "[CRM] [Promotion Enhancement] API get list reward (not claimable)",
+      "components": [
+        {
+          "name": "CRM"
+        }
+      ],
       "status": {
         "name": "In Analysis"
       },
@@ -41,6 +46,11 @@
       "id": "1019719",
       "key": "GE-24751",
       "summary": "[MS][Promo at Cashier] Handle promotion list for case failed rules (special for pmc rule)",
+      "components": [
+        {
+          "name": "Marketing Solutions"
+        }
+      ],
       "status": {
         "name": "New"
       },
@@ -77,6 +87,11 @@
       "id": "1011954",
       "key": "GE-24495",
       "summary": "[MS][Promo at Cashier] Play haptic when user click button on promotion shell component",
+      "components": [
+        {
+          "name": "Marketing Solutions"
+        }
+      ],
       "status": {
         "name": "Walkthrough"
       },
@@ -113,6 +128,11 @@
       "id": "1009039",
       "key": "GE-24330",
       "summary": "[MS][Retire segment v1] Remove all fields config recording segment joined campaign on Event Tool",
+      "components": [
+        {
+          "name": "Marketing Solutions"
+        }
+      ],
       "status": {
         "name": "In Dev"
       },
@@ -150,6 +170,11 @@
       "id": "1004292",
       "key": "GE-24158",
       "summary": "[MS][Reservation][Promo at Cashier] Integrate with cashier",
+      "components": [
+        {
+          "name": "Marketing Solutions"
+        }
+      ],
       "status": {
         "name": "Ready for testing"
       },
@@ -187,6 +212,11 @@
       "id": "986508",
       "key": "GE-23616",
       "summary": "[MS][Promo at Cashier] Apply rate limit and circuit breaker for public APIs",
+      "components": [
+        {
+          "name": "Marketing Solutions"
+        }
+      ],
       "status": {
         "name": "Ready for testing"
       },
@@ -224,6 +254,11 @@
       "id": "985488",
       "key": "GE-23581",
       "summary": "[MS][Promo at Cashier] Voucher TnC at Cashier",
+      "components": [
+        {
+          "name": "Marketing Solutions"
+        }
+      ],
       "status": {
         "name": "In Test"
       },
@@ -261,6 +296,11 @@
       "id": "984785",
       "key": "GE-23564",
       "summary": "[MS][FE][Perf] Optimize performance for Promotion shell to meet load-time, fps KPI",
+      "components": [
+        {
+          "name": "Marketing Solutions"
+        }
+      ],
       "status": {
         "name": "In Dev"
       },
@@ -301,6 +341,11 @@
       "id": "981847",
       "key": "GE-23511",
       "summary": "[MS][Promo at Cashier] Add FE Tracking",
+      "components": [
+        {
+          "name": "Marketing Solutions"
+        }
+      ],
       "status": {
         "name": "Ready for testing"
       },
@@ -337,6 +382,11 @@
       "id": "980231",
       "key": "GE-23407",
       "summary": "[CRM] Support API - Promotion List at Cashier Checkout",
+      "components": [
+        {
+          "name": "CRM"
+        }
+      ],
       "status": {
         "name": "In Test"
       },
@@ -377,6 +427,11 @@
       "id": "977860",
       "key": "GE-23328",
       "summary": "[MS][Promo at Cashier] Claim & Apply voucher",
+      "components": [
+        {
+          "name": "Marketing Solutions"
+        }
+      ],
       "status": {
         "name": "In Test"
       },
@@ -414,6 +469,11 @@
       "id": "977859",
       "key": "GE-23327",
       "summary": "[MS][Promo at Cashier] Input Promotion Code to save voucher",
+      "components": [
+        {
+          "name": "Marketing Solutions"
+        }
+      ],
       "status": {
         "name": "In Test"
       },
@@ -451,6 +511,11 @@
       "id": "972831",
       "key": "GE-23200",
       "summary": "[MS][Promotion x Cashier] Technical preparation for FE",
+      "components": [
+        {
+          "name": "Marketing Solutions"
+        }
+      ],
       "status": {
         "name": "In Test"
       },
@@ -488,6 +553,11 @@
       "id": "963335",
       "key": "GE-22824",
       "summary": "[MS][Tech] Remove task V1 configuration",
+      "components": [
+        {
+          "name": "Marketing Solutions"
+        }
+      ],
       "status": {
         "name": "In Dev"
       },
@@ -526,6 +596,11 @@
       "id": "961336",
       "key": "GE-22792",
       "summary": "[MS][Promo at Cashier] Show List Voucher in Component",
+      "components": [
+        {
+          "name": "Marketing Solutions"
+        }
+      ],
       "status": {
         "name": "In Test"
       },
