@@ -3,3 +3,5 @@ apscheduler
 pyyaml
 anthropic
 openai
+fastapi
+uvicorn[standard]

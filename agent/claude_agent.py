@@ -10,14 +10,11 @@ Model strategy:
 
 Endpoint: https://maas-llm-aiplatform-hcm.api.vngcloud.vn/v1
 
-Ví dụ (chạy từ thư mục qe_agent/):
-  python3 claude_agent.py
-  python3 claude_agent.py --snapshot ge_sprint_snapshot.json
-  python3 claude_agent.py --snapshot ge_sprint_snapshot.json --repl
-  python3 claude_agent.py -m "Tickets nào đang vi phạm Level 1?"
-
-Hoặc từ thư mục gốc:
-  python3 -m qe_agent.claude_agent --snapshot qe_agent/ge_sprint_snapshot.json
+Ví dụ (chạy từ thư mục gốc của repo):
+  python3 agent/claude_agent.py
+  python3 agent/claude_agent.py --snapshot ge_sprint_snapshot.json
+  python3 agent/claude_agent.py --snapshot ge_sprint_snapshot.json --repl
+  python3 agent/claude_agent.py -m "Tickets nào đang vi phạm Level 1?"
 """
 import argparse, json, sys, os
 from datetime import date

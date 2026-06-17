@@ -1,20 +1,13 @@
-# Secrets
+.specstory/
+.claude/
 .env
-
-# Generated files
-*.db
-report.html
-result.json
-
-# Python
 __pycache__/
 *.pyc
-*.pyo
-.venv/
-venv/
+*.db
 
-# IDE
+# Vendored AgentBase skills tooling — contains credentials/token cache, never commit
+greennode-agentbase-skills/
+.greennode.json
+.agentbase/
 .vscode/
-.claude/
-.specstory/
-.cursorindexingignore
+.DS_Store
