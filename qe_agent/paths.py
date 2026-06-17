@@ -37,3 +37,10 @@ def load_env() -> None:
                     k, v = line.split("=", 1)
                     os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
             break
+
+
+# Auto-load .env on import
+try:
+    load_env()
+except Exception as e:
+    pass  # silently ignore load errors
