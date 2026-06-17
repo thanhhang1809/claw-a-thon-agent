@@ -11,3 +11,4 @@ greennode-agentbase-skills/
 .agentbase/
 .vscode/
 .DS_Store
+qe_agent/

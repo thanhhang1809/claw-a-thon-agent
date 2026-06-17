@@ -12,3 +12,5 @@ greennode-agentbase-skills/
 report.html
 result.json
 .agentbase/
+qe_agent/
+**/.specstory/
