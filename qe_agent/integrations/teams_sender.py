@@ -529,7 +529,7 @@ def send(report: DailyReport, dry_run: bool = False) -> None:
 
     max_rows = _max_rows_per_email()
 
-    # Nếu không có vi phạm nào, vẫn gửi "all clear" message
+    # Nếu không có vi phạm nào, vẫn gửi "all clear" message cho tất cả channels
     if not routed or all(not groups for groups in routed.values()):
         for ch in [CH_QE, CH_DEV_MS, CH_DEV_CRM]:
             to_email = os.getenv(CHANNEL_EMAIL_ENV[ch])
@@ -542,14 +542,23 @@ def send(report: DailyReport, dry_run: bool = False) -> None:
             print(f"[sent] {subject} → {to_email}")
         return
 
-    for ch, groups in routed.items():
-        if not groups:
-            continue
+    # Gửi report cho tất cả channels (nếu channel nào không có violations, gửi "all clear")
+    for ch in [CH_QE, CH_DEV_MS, CH_DEV_CRM]:
         to_email = os.getenv(CHANNEL_EMAIL_ENV[ch])
         if not to_email:
-            print(f"[skip] {CHANNEL_EMAIL_ENV[ch]} chưa set — bỏ qua {ch}")
             continue
 
+        groups = routed.get(ch, [])
+        if not groups:
+            # Channel này không có violations, gửi "all clear"
+            subject = f"✅ QE Watchdog {date_str} — {CHANNEL_TITLE[ch]}"
+            text = f"Không có vi phạm 🎉"
+            html = f"<html><body><p style='font-size:16px'>✅ Không có vi phạm ngày hôm nay 🎉</p></body></html>"
+            _send_one(to_email, subject, text, html, gmail_user, gmail_pass)
+            print(f"[sent] {subject} → {to_email}")
+            continue
+
+        # Channel này có violations, gửi report
         # Luôn gửi TRỌN report của kênh trong 1 email (QE Daily vẫn hiện MS+CRM
         # gộp). Không tách theo component / không phân trang dù data dài.
         _send_channel_pages(to_email, CHANNEL_TITLE[ch], date_str, groups,
