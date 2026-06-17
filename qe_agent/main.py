@@ -21,7 +21,6 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import paths  # noqa: F401 — nạp .env
 
 from engine.rule_engine import run as run_rules
-from engine.mock_data import generate_mock_tickets
 
 logging.basicConfig(
     level=logging.INFO,
@@ -46,6 +45,7 @@ def run_pipeline(use_mock: bool = False, dry_run: bool = False,
         from integrations.jira_fetcher import fetch_from_snapshot
         tickets = fetch_from_snapshot(snapshot)  # demo offline, gọn cho 1 email/channel
     elif use_mock:
+        from engine.mock_data import generate_mock_tickets
         tickets = generate_mock_tickets()
     elif keys:
         from integrations.jira_fetcher import fetch_by_keys
