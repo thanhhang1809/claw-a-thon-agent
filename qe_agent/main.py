@@ -112,9 +112,9 @@ def start_scheduler() -> None:
         sys.exit(1)
 
     sched = BlockingScheduler(timezone="Asia/Ho_Chi_Minh")
-    # Nguồn dữ liệu mặc định cho daily report: snapshot (override qua env
-    # DEFAULT_REPORT_SNAPSHOT; để rỗng -> fetch active sprint từ Jira thật).
-    default_snapshot = os.getenv("DEFAULT_REPORT_SNAPSHOT", "hangdtt4_snapshot.json") or None
+    # Nguồn dữ liệu mặc định cho daily report: live Jira (có thể override qua env
+    # DEFAULT_REPORT_SNAPSHOT=<snapshot.json> để dùng snapshot thay vì live Jira).
+    default_snapshot = os.getenv("DEFAULT_REPORT_SNAPSHOT") or None
     # 9:00 sáng, thứ Hai đến thứ Sáu
     sched.add_job(run_pipeline, CronTrigger(day_of_week="mon-fri", hour=9, minute=0),
                   kwargs={"snapshot": default_snapshot})

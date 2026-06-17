@@ -405,4 +405,6 @@ To add new email features, modify `teams_sender.py` (HTML builder, routing logic
 
 ---
 
-**Questions?** See `AGENT_DESCRIPTION.md` for agent design rationale.
+## Support
+
+For issues or questions, check the troubleshooting section above or refer to the project documentation.
