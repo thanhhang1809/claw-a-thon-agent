@@ -529,6 +529,19 @@ def send(report: DailyReport, dry_run: bool = False) -> None:
 
     max_rows = _max_rows_per_email()
 
+    # Nếu không có vi phạm nào, vẫn gửi "all clear" message
+    if not routed or all(not groups for groups in routed.values()):
+        for ch in [CH_QE, CH_DEV_MS, CH_DEV_CRM]:
+            to_email = os.getenv(CHANNEL_EMAIL_ENV[ch])
+            if not to_email:
+                continue
+            subject = f"✅ QE Watchdog {date_str} — {CHANNEL_TITLE[ch]}"
+            text = f"Không có vi phạm 🎉"
+            html = f"<html><body><p style='font-size:16px'>✅ Không có vi phạm ngày hôm nay 🎉</p></body></html>"
+            _send_one(to_email, subject, text, html, gmail_user, gmail_pass)
+            print(f"[sent] {subject} → {to_email}")
+        return
+
     for ch, groups in routed.items():
         if not groups:
             continue

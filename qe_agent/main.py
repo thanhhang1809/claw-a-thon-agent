@@ -69,10 +69,6 @@ def run_pipeline(use_mock: bool = False, dry_run: bool = False,
              len(report.sandbox_tomorrow), len(report.blocked),
              len(report.level1), len(report.level2), len(report.level3))
 
-    if report.is_empty():
-        log.info("Report empty — nothing to send")
-        return
-
     # 3a. preview mode — render HTML and open in browser (demo use)
     if preview:
         import tempfile, webbrowser
